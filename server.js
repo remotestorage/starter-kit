@@ -1,4 +1,3 @@
-
 var fs = require('fs'),
   http = require('http'),
   https = require('https'),
@@ -535,7 +534,7 @@ if((!amd) && (require.main==module)) {//if this file is directly called from the
   server.listen(config.port, function(){
     console.log('Example server started on '+ config.protocol + '://' + config.host +':' + config.port + '/');
   });
-  fs.readdir('../apps/', function(err, listing) {
+  fs.readdir('./apps/', function(err, listing) {
     if(!err) {
       for(var i=0; i<listing.length; i++) {
         console.log('setting listener');
