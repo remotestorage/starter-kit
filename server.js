@@ -538,7 +538,7 @@ if((!amd) && (require.main==module)) {//if this file is directly called from the
     if(!err) {
       for(var i=0; i<listing.length; i++) {
         console.log('setting listener');
-        var listener = staticServer('../apps/'+listing[i]);
+        var listener = staticServer('./apps/'+listing[i]);
         console.log('starting server');
         https.createServer(ssl, listener).listen(parseInt(listing[i]));
       }
