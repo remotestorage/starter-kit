@@ -318,7 +318,7 @@ exports.server = function(config) {
   function toJsonLd(revisions) {
     var items = {};
     for(var i in revisions) {
-      items[i] = { ETag: revision[i] };
+      items[i] = { ETag: revisions[i] };
     }
     return {
       '@context': 'http://remotestorage.io/spec/folder-description',
