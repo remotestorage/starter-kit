@@ -1,9 +1,7 @@
 var fs = require('fs'),
   http = require('http'),
   https = require('https'),
-  url = require('url'),
-  static = require('node-static'),
-  crypto = require('crypto');
+  static = require('node-static');
     
 var dontPersist = true;
 
