@@ -41,21 +41,11 @@ if((!amd) && (require.main==module)) {//if this file is directly called from the
           'my_secret_bearer_token': [':rw']
         },
         defaultUserName: 'me',
-        protocol: 'http',
         host: 'localhost',
-        ssl: {
-          cert: './tls.cert',
-          key: './tls.key'
-        },
         port: 80,
         firstAppPort: 8001,
         apps: {}
      };
-
-     var ssl = {};
-     for(var k in config.ssl){
-       ssl[k] = fs.readFileSync(config.ssl[k])
-     }
 
      for(var i=0; i<listing.length; i++) {
         console.log('setting listener');
@@ -67,14 +57,8 @@ if((!amd) && (require.main==module)) {//if this file is directly called from the
       var server = require('./remotestorage-server').server(config);
       dontPersist = process.argv.length > 1 && (process.argv.slice(-1)[0] == ('--no-persistence'));
       server.init();
-      var webserver;
-      if(config.protocol == 'https') {
-        webserver = https.createServer(ssl, server.serve);
-      } else {
-        webserver = http.createServer(server.serve);
-      }
-      webserver.listen(config.port, function(){
-        console.log('Example server started on '+ config.protocol + '://' + config.host +':' + config.port + '/');
+      http.createServer(server.serve).listen(config.port, function(){
+        console.log('Example server started on http://' + config.host +':' + config.port + '/');
       });
     }
   });
