@@ -24,23 +24,8 @@ if(typeof(exports) === 'undefined') {
   amd = true;
 }
 
-var config = {
-  initialTokens: {
-    'God': [':rw']
-  },
-  defaultUserName: 'me',
-  protocol: 'https',
-  host: 'localhost',
-  ssl: {
-    cert: './tls.cert',
-    key: './tls.key'
-  },
-  port: 443,
-};
-
-exports.server = (function() {
+exports.server = function(config) {
   var tokens, version, contentType, content;
-
   var responseDelay = null;
   var capturedRequests = [];
   var doCapture = false;
@@ -259,16 +244,13 @@ exports.server = (function() {
       'content-type': 'text/html'
     });
     res.write('<!DOCTYPE html lang="en"><head><title>'+config.host+'</title><meta charset="utf-8"></head><body><ul>');
-    var scopes = {
-      'https://localhost:4431/index.html': ['notes:rw']
-    };
     var outstanding = 0;
-    for(var i in scopes) {
+    for(var i in config.apps) {
       outstanding++;
       (function(i) {
-        createToken(config.defaultUserName, scopes[i], function(token) {
+        createToken(config.defaultUserName, [':rw'], function(token) {
           res.write('<li><a href="'+i+'#remotestorage=me@localhost'
-                    +'&access_token='+token+'">'+i+'</a></li>');
+                    +'&access_token='+token+'">'+config.apps[i]+'</a></li>');
           outstanding--;
           if(outstanding==0) {
             res.write('</ul></body></html>');
@@ -507,45 +489,4 @@ exports.server = (function() {
       silent = true;
     }
   };
-})();
-
-function staticServer(path) {
-  var file = new static.Server(path);
-  return function (req, res) {
-    req.addListener('end', function () {
-      file.serve(req, res);
-    }).resume();
-  };
-}
-
-if((!amd) && (require.main==module)) {//if this file is directly called from the CLI
-  dontPersist = process.argv.length > 1 && (process.argv.slice(-1)[0] == ('--no-persistence'));
-  exports.server.init();
-  var server;
-  if(config.protocol == 'https') {
-    var ssl = {};
-    for(var k in config.ssl){
-      ssl[k] = fs.readFileSync(config.ssl[k])
-    }
-    server = https.createServer(ssl, exports.server.serve);
-  } else {
-    server = http.createServer(exports.server.serve);
-  }
-  server.listen(config.port, function(){
-    console.log('Example server started on '+ config.protocol + '://' + config.host +':' + config.port + '/');
-  });
-  fs.readdir('./apps/', function(err, listing) {
-    if(!err) {
-      for(var i=0; i<listing.length; i++) {
-        console.log('setting listener');
-        var listener = staticServer('./apps/'+listing[i]);
-        console.log('starting server');
-        https.createServer(ssl, listener).listen(parseInt(listing[i]));
-      }
-    } 
-  });
-}
-
-if(amd) {
-  define([], exports);
-}
+};
