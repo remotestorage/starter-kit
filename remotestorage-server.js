@@ -315,6 +315,17 @@ exports.server = function(config) {
     }
     return true;
   }
+  function toJsonLd(revisions) {
+    var items = {};
+    for(var i in revisions) {
+      items[i] = { ETag: revision[i] };
+    }
+    return {
+      '@context': 'http://remotestorage.io/spec/folder-description',
+      items: items
+    };
+  }
+      
   function storage(req, urlObj, res) {
     var path=urlObj.pathname.substring('/storage/'.length);
     var cond = {
@@ -342,7 +353,7 @@ exports.server = function(config) {
       } else {
         if(content[path]) {
           if(path.substr(-1)=='/') {
-            writeJson(res, content[path], req.headers.origin, version[path], cond);
+            writeJson(res, toJsonLd(content[path]), req.headers.origin, version[path], cond);
           } else {
             writeRaw(res, contentType[path], content[path], req.headers.origin, version[path], cond);
           }
