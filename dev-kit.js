@@ -26,7 +26,7 @@ if(typeof(exports) === 'undefined') {
 
 var config = {
   initialTokens: {
-    'God': [':rw']
+    'my_secret_bearer_token': [':rw']
   },
   defaultUserName: 'me',
   protocol: 'https',
@@ -36,11 +36,13 @@ var config = {
     key: './tls.key'
   },
   port: 443,
+  firstAppPort: 4431
 };
+
+var apps = {};
 
 exports.server = (function() {
   var tokens, version, contentType, content;
-
   var responseDelay = null;
   var capturedRequests = [];
   var doCapture = false;
@@ -259,16 +261,13 @@ exports.server = (function() {
       'content-type': 'text/html'
     });
     res.write('<!DOCTYPE html lang="en"><head><title>'+config.host+'</title><meta charset="utf-8"></head><body><ul>');
-    var scopes = {
-      'https://localhost:4431/index.html': ['notes:rw']
-    };
     var outstanding = 0;
-    for(var i in scopes) {
+    for(var i in apps) {
       outstanding++;
       (function(i) {
-        createToken(config.defaultUserName, scopes[i], function(token) {
+        createToken(config.defaultUserName, [':rw'], function(token) {
           res.write('<li><a href="'+i+'#remotestorage=me@localhost'
-                    +'&access_token='+token+'">'+i+'</a></li>');
+                    +'&access_token='+token+'">'+apps[i]+'</a></li>');
           outstanding--;
           if(outstanding==0) {
             res.write('</ul></body></html>');
@@ -540,9 +539,10 @@ if((!amd) && (require.main==module)) {//if this file is directly called from the
         console.log('setting listener');
         var listener = staticServer('./apps/'+listing[i]);
         console.log('starting server');
-        https.createServer(ssl, listener).listen(parseInt(listing[i]));
+        https.createServer(ssl, listener).listen(config.firstAppPort+i);
+        apps['https://localhost:'+(config.firstAppPort+i)+'/'] = listing[i];
       }
-    } 
+    }
   });
 }
 
