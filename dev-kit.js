@@ -1,6 +1,5 @@
 var fs = require('fs'),
   http = require('http'),
-  https = require('https'),
   static = require('node-static');
     
 var dontPersist = true;
@@ -42,14 +41,14 @@ if((!amd) && (require.main==module)) {//if this file is directly called from the
           'my_secret_bearer_token': [':rw']
         },
         defaultUserName: 'me',
-        protocol: 'https',
+        protocol: 'http',
         host: 'localhost',
         ssl: {
           cert: './tls.cert',
           key: './tls.key'
         },
-        port: 443,
-        firstAppPort: 4431,
+        port: 80,
+        firstAppPort: 8001,
         apps: {}
      };
 
@@ -62,8 +61,8 @@ if((!amd) && (require.main==module)) {//if this file is directly called from the
         console.log('setting listener');
         var listener = staticServer('./apps/'+listing[i]);
         console.log('starting server');
-        https.createServer(ssl, listener).listen(config.firstAppPort+i);
-        config.apps['https://localhost:'+(config.firstAppPort+i)+'/'] = listing[i];
+        http.createServer(listener).listen(config.firstAppPort+i);
+        config.apps['http://localhost:'+(config.firstAppPort+i)+'/'] = listing[i];
       }
       var server = require('./remotestorage-server').server(config);
       dontPersist = process.argv.length > 1 && (process.argv.slice(-1)[0] == ('--no-persistence'));
