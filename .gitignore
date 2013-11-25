@@ -1,2 +1,4 @@
 node_modules/
 server-state/
+.gitattributes
+Solution1/
