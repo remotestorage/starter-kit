@@ -179,8 +179,8 @@ exports.server = function(config) {
       }
     }
   }
-  function writeHead(res, status, origin, timestamp, contentType) {
-    console.log('writeHead', status, origin, timestamp, contentType);
+  function writeHead(res, status, origin, timestamp, contentType, contentLength) {
+    console.log('writeHead', status, origin, timestamp, contentType, contentLength);
     var headers = {
       'Access-Control-Allow-Origin': (origin?origin:'*'),
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, Origin',
@@ -192,6 +192,9 @@ exports.server = function(config) {
     if(contentType) {
       headers['content-type']= contentType;
     }
+    if(contentLength) {
+      headers['content-length']= contentLength;
+    }
     res.writeHead(status, headers);
   }
 
@@ -200,7 +203,7 @@ exports.server = function(config) {
       log('access-control-allow-origin:'+ (origin?origin:'*'));
       log(contentType);
       log(content);
-      writeHead(res, 200, origin, timestamp, contentType);
+      writeHead(res, 200, origin, timestamp, contentType, content.length);
       res.write(content);
       res.end();
     }
@@ -330,6 +333,27 @@ exports.server = function(config) {
     if(req.method=='OPTIONS') {
       log('OPTIONS ', req.headers);
       writeJson(res, null, req.headers.origin);
+    } else if(req.method=='HEAD') {
+      log('HEAD');
+      if(!mayRead(req.headers.authorization, path)) {
+        computerSaysNo(res, req.headers.origin, 401);
+      } else if(!condMet(cond, path)) {
+        computerSaysNo(res, req.headers.origin, 304, version[path]);
+      } else {
+        if(content[path]) {
+          if(path.substr(-1)=='/') {
+            writeJson(res, '', req.headers.origin, version[path], cond);
+          } else {
+            writeRaw(res, contentType[path], '', req.headers.origin, version[path], cond);
+          }
+        } else {
+          if(path.substr(-1) == '/' && path.split('/').length == 2) {
+            writeJson(res, '', req.headers.origin, 0, cond);
+          } else {
+            give404(res, req.headers.origin);
+          }
+        }
+      }
     } else if(req.method=='GET') {
       log('GET');
       if(!mayRead(req.headers.authorization, path)) {
