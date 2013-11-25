@@ -268,11 +268,11 @@ exports.server = function(config) {
     }
     writeJson(res, {
       links:[{
-        href: config.protocol+'://'+config.host+':'+config.port+'/storage/'+userName,
+        href: 'http://'+config.host+':'+config.port+'/storage/'+userName,
         rel: "remotestorage",
         properties: {
           'http://remotestorage.io/spec/version': 'draft-dejong-remotestorage-02',
-          'https://tools.ietf.org/html/rfc6750#section-4.2': config.protocol+'://'+config.host+':'+config.port+'/auth/'+userName,
+          'https://tools.ietf.org/html/rfc6750#section-4.2': 'http://'+config.host+':'+config.port+'/auth/'+userName,
           'http://tools.ietf.org/html/rfc6750#section-2.3': false,
           'https://tools.ietf.org/html/rfc2616#section-14.16': false
         }
