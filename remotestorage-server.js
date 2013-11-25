@@ -480,8 +480,8 @@ exports.server = function(config) {
     if(urlObj.pathname == '/') {
       log('PORTAL');
       portal(urlObj, res);
-    } else if(urlObj.pathname == '/.well-known/host-meta.json') {//TODO: implement rest of webfinger
-      log('HOST-META');
+    } else if(urlObj.pathname == '/.well-known/webfinger') {
+      log('WEBFINGER');
       webfinger(urlObj, res);
     } else if(urlObj.pathname.substring(0, '/auth/'.length) == '/auth/') {
       log('OAUTH');
