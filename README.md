@@ -1,21 +1,28 @@
-devkit
-======
+remoteStorage Dev Kit
+=====================
 
-the quickest way to get started with a local remoteStorage server and a Hello World app as your starting point:
+This dev kit is the quickest way to get started with remoteStorage app
+development. It gives you a local remoteStorage server and a Hello World app as
+your starting point.
 
+In order to run the example server, you need
+[node.js](http://nodejs.org/download/) with NPM installed.
 
-````shell
+First, install the dependencies with:
+
     npm install
+
+Then you can run the whole example, consisting of both a remoteStorage server
+and a Web server for the example app, with:
+
     sudo node dev-kit
-````
 
-and then visit http://localhost/
+The output will tell you the ports of both the remoteStorage server and the Web
+server for the example app.
 
-notes:
-- because the dev kit runs WebFinger on port 80, you need to run as root
+...
 
-next steps:
-- you will see the storage running on port 80 and the apps on one port each, starting at 8001.
-- look at this with your developer console open.
-- `cd apps/; cp -r minimal-example my-app; cd my-app/` and edit away!
-- read the docs on http://remotestorage.io/integrate/
+### Next steps
+
+* Read the docs on http://remotestorage.io/integrate/
+* ...
