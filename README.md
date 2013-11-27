@@ -6,7 +6,7 @@ the quickest way to get started with a local remoteStorage server and a Hello Wo
 
 ````shell
     npm install
-    sudo node dev-kit
+    sudo node starter-kit
 ````
 
 and then visit http://localhost/
