@@ -300,13 +300,21 @@ exports.server = function(config) {
       });
     //}
   }
+  function getVersion(path) {
+    if(version[path]) {
+      return version[path];
+    }
+    if(path.substr(-1)=='/') {
+      return 'empty-dir';
+    }
+  }
   function condMet(cond, path) {
     if(cond.ifNoneMatch=='*') {//if-none-match is either '*'...
       if(content[path]) {
         return false;
       }
-    } else if(cond.ifNoneMatch && version[path]) {//or a comma-separated list of etags
-      if(cond.ifNoneMatch.split(',').indexOf(String('"'+version[path]+'"'))!=-1) {
+    } else if(cond.ifNoneMatch && getVersion(path)) {//or a comma-separated list of etags
+      if(cond.ifNoneMatch.split(',').indexOf(String('"'+getVersion(path)+'"'))!=-1) {
         return false;
       }
     }
@@ -361,7 +369,7 @@ exports.server = function(config) {
           }
         } else {
           if(path.substr(-1) == '/' && path.split('/').length == 2) {
-            writeJson(res, '', req.headers.origin, 0, cond);
+            writeJson(res, '', req.headers.origin, getVersion(path), cond);
           } else {
             give404(res, req.headers.origin);
           }
@@ -382,7 +390,7 @@ exports.server = function(config) {
           }
         } else {
           if(path.substr(-1) == '/') {//empty dir
-            writeJson(res, {}, req.headers.origin, 0, cond);
+            writeJson(res, {}, req.headers.origin, getVersion(path), cond);
           } else {
             give404(res, req.headers.origin);
           }
