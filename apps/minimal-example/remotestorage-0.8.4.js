@@ -4252,12 +4252,12 @@ Math.uuid = function (len, radix) {
       var path;
       while((path = roots.shift())) {
         (function (path) {
-          RemoteStorage.Sync.sync(rs.remote, rs.local, path, rs.caching.get(path)).
+          var cachingState = rs.caching.get(path);
+          RemoteStorage.Sync.sync(rs.remote, rs.local, path, cachingState).
             then(function() {
-              var obj = this.caching.get(path);
-              if(!obj.ready) {
-                obj.ready = true;
-                this.caching.set(path, obj);
+              if(!cachingState.ready) {
+                cachingState.ready = true;
+                rs.caching.set(path, cachingState);
               }
               if (aborted) { return; }
               i++;
@@ -4266,7 +4266,7 @@ Math.uuid = function (len, radix) {
                 promise.fulfill();
               }
             }, function(error) {
-              this.caching.set(path, {data: true, ready: true});
+              rs.caching.set(path, {data: true, ready: true});
               console.error('syncing', path, 'failed:', error);
               if (aborted) { return; }
               aborted = true;
