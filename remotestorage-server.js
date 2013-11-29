@@ -185,7 +185,7 @@ exports.server = function(config) {
       'Access-Control-Allow-Origin': (origin?origin:'*'),
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, Origin',
       'Access-Control-Allow-Methods': 'GET, PUT, DELETE',
-      'Expires': '-1'
+      'Expires': '0'
     };
     if(typeof(timestamp) != 'undefined') {
       headers['etag']= '"'+timestamp.toString()+'"';
