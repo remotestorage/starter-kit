@@ -1,4 +1,4 @@
-/** remotestorage.js 0.8.4, http://remotestorage.io, MIT-licensed **/
+/** remotestorage.js 0.8.3, http://remotestorage.io, MIT-licensed **/
 
 /** FILE: lib/promising.js **/
 (function(global) {
@@ -123,14 +123,14 @@
     return p.fulfill.apply(p,args);
   }
 
-  function shareFirst(path){
+  function shareFirst(path) {
     return ( this.backend === 'dropbox' &&
              path.match(/^\/public\/.*[^\/]$/) );
   }
 
   var SyncedGetPutDelete = {
     get: function(path) {
-      if (this.caching.cachePathReady(path)) {
+      if (this.caching.cachePath(path)) {
         return this.local.get(path);
       } else {
         return this.remote.get(path);
@@ -138,7 +138,7 @@
     },
 
     put: function(path, body, contentType) {
-      if (shareFirst.bind(this)(path)){
+      if (shareFirst.bind(this)(path)) {
         //this.local.put(path, body, contentType);
         return SyncedGetPutDelete._wrapBusyDone.call(this, this.remote.put(path, body, contentType));
       }
@@ -330,15 +330,21 @@
      *
      */
     connect: function(userAddress) {
-      if ( userAddress.indexOf('@') < 0) {
-        this._emit('error', new RemoteStorage.DiscoveryError("user adress doesn't contain an @"));
+      if (userAddress.indexOf('@') < 0) {
+        this._emit('error', new RemoteStorage.DiscoveryError("User adress doesn't contain an @."));
         return;
       }
-      this._emit('connecting');
       this.remote.configure(userAddress);
-      RemoteStorage.Discover(userAddress,function(href, storageApi, authURL){
+      this._emit('connecting');
+
+      var discoveryTimeout = setTimeout(function() {
+        this._emit('error', new RemoteStorage.DiscoveryError("No storage information found at that user address."));
+      }.bind(this), 5000);
+
+      RemoteStorage.Discover(userAddress, function(href, storageApi, authURL) {
+        clearTimeout(discoveryTimeout);
         if (!href) {
-          this._emit('error', new RemoteStorage.DiscoveryError('failed to contact storage server'));
+          this._emit('error', new RemoteStorage.DiscoveryError("Failed to contact storage server."));
           return;
         }
         this._emit('authing');
@@ -3746,15 +3752,10 @@ Math.uuid = function (len, radix) {
      *
      * Enable caching for the given path.
      *
-     * here, `data` is true if both folder listings and
-     * documents in the subtree should be cached,
-     * and false to indicate that only folder listings,
-     * not documents in the subtree should be cached. 
-     *
      * Parameters:
      *   path - Absolute path to a directory.
      */
-    enable: function(path) { this.set(path, { data: true, ready: false }); },
+    enable: function(path) { this.set(path, { data: true }); },
     /**
      * Method: disable
      *
@@ -3816,24 +3817,7 @@ Math.uuid = function (len, radix) {
     cachePath: function(path) {
       this._validatePath(path);
       var settings = this._query(path);
-      //if data==true, both folders listings and documents should be cached
-      //if data==false, only folder listings should be cached;
-      //hence the 'isDir(path) || ...'
       return settings && (isDir(path) || settings.data);
-    },
-
-    // Method: cachePathReady
-    //
-    // Checks if given path should be cached and is ready (i.e. sync has completed at least once).
-    //
-    // Returns: true or false
-    cachePathReady: function(path) {
-      this._validatePath(path);
-      var settings = this._query(path);
-      //if data==true, both folders listings and documents should be cached
-      //if data==false, only folder listings should be cached;
-      //hence the 'isDir(path) || ...'
-      return ((typeof(settings) == 'object') && (settings.ready) && (isDir(path) || settings.data));
     },
 
     /**
@@ -4242,11 +4226,6 @@ Math.uuid = function (len, radix) {
         (function (path) {
           RemoteStorage.Sync.sync(rs.remote, rs.local, path, rs.caching.get(path)).
             then(function() {
-              var obj = this.caching.get(path);
-              if(!obj.ready) {
-                obj.ready = true;
-                this.caching.set(path, obj);
-              }
               if (aborted) { return; }
               i++;
               if (n === i) {
@@ -4254,7 +4233,6 @@ Math.uuid = function (len, radix) {
                 promise.fulfill();
               }
             }, function(error) {
-              this.caching.set(path, {data: true, ready: true});
               console.error('syncing', path, 'failed:', error);
               if (aborted) { return; }
               aborted = true;
