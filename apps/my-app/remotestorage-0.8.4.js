@@ -1,4 +1,4 @@
-/** remotestorage.js 0.8.3-f42a672f, http://remotestorage.io, MIT-licensed **/
+/** remotestorage.js 0.8.4, http://remotestorage.io, MIT-licensed **/
 
 /** FILE: lib/promising.js **/
 (function(global) {
@@ -130,7 +130,7 @@
 
   var SyncedGetPutDelete = {
     get: function(path) {
-      if (this.caching.cachePath(path)) {
+      if (this.caching.cachePathReady(path)) {
         return this.local.get(path);
       } else {
         return this.remote.get(path);
@@ -484,6 +484,7 @@
 
     _init: function() {
       this._loadFeatures(function(features) {
+        var readyFired = false;
         this.log('all features loaded');
         this.local = features.local && new features.local();
         // (this.remote set by WireClient._rs_init
@@ -499,7 +500,10 @@
         if (this.remote) {
           this.remote.on('connected', function() {
             try {
-              this._emit('ready');
+              if(!readyFired) {
+                this._emit('ready');
+                readyFired = true;
+              }
             } catch(e) {
               console.error("'ready' failed: ", e, e.stack);
               this._emit('error', e);
@@ -507,7 +511,10 @@
           }.bind(this));
           if (this.remote.connected) {
             try {
-              this._emit('ready');
+              if(!readyFired) {
+                this._emit('ready');
+                readyFired = true;
+              }
             } catch(e) {
               console.error("'ready' failed: ", e, e.stack);
               this._emit('error', e);
@@ -954,6 +961,7 @@
     }
 
     var promise = promising();
+    var revision;
 
     headers['Authorization'] = 'Bearer ' + token;
 
@@ -966,12 +974,15 @@
       } else {
         if (response.status === 404) {
           promise.fulfill(404);
+        } else if (response.status === 304) {
+          revision = response.getResponseHeader('ETag');
+          promise.fulfill(304, undefined, undefined, revision);
         } else {
           var mimeType = response.getResponseHeader('Content-Type');
           var body;
-          var revision = getEtag ? response.getResponseHeader('ETag') : (response.status === 200 ? fakeRevision : undefined);
+          revision = getEtag ? response.getResponseHeader('ETag') : (response.status === 200 ? fakeRevision : undefined);
           if ((! mimeType) || mimeType.match(/charset=binary/)) {
-            var blob = new Blob([response.response], {type: mimeType});
+            var blob = new Blob([response.response], { type: mimeType });
             var reader = new FileReader();
             reader.addEventListener("loadend", function() {
               // reader.result contains the contents of blob as a typed array
@@ -997,7 +1008,6 @@
                 && (body['@context'] === 'http://remotestorage.io/spec/folder-description')
                 && (typeof(body['items']) === 'object'));
   }
-
 
   var onErrorCb;
 
@@ -3149,7 +3159,7 @@ Math.uuid = function (len, radix) {
      * (start code)
      * {
      *    path: path,
-     *    origin: incoming ? 'remote' : 'window',
+     *    origin: 'window', 'local', or 'remote'
      *    oldValue: oldBody,
      *    newValue: newBody
      *  }
@@ -3159,8 +3169,8 @@ Math.uuid = function (len, radix) {
      *
      *
      * * the origin tells you if it's a change pulled by sync(remote)
-     * or some user action within the app(window)
-     *
+     * or some user action within the app(window) or a result of connecting
+     * with the local data store(local).
      *
      *
      * * the oldValue defaults to undefined if you are dealing with some
@@ -3736,10 +3746,15 @@ Math.uuid = function (len, radix) {
      *
      * Enable caching for the given path.
      *
+     * here, `data` is true if both folder listings and
+     * documents in the subtree should be cached,
+     * and false to indicate that only folder listings,
+     * not documents in the subtree should be cached. 
+     *
      * Parameters:
      *   path - Absolute path to a directory.
      */
-    enable: function(path) { this.set(path, { data: true }); },
+    enable: function(path) { this.set(path, { data: true, ready: false }); },
     /**
      * Method: disable
      *
@@ -3801,7 +3816,24 @@ Math.uuid = function (len, radix) {
     cachePath: function(path) {
       this._validatePath(path);
       var settings = this._query(path);
+      //if data==true, both folders listings and documents should be cached
+      //if data==false, only folder listings should be cached;
+      //hence the 'isDir(path) || ...'
       return settings && (isDir(path) || settings.data);
+    },
+
+    // Method: cachePathReady
+    //
+    // Checks if given path should be cached and is ready (i.e. sync has completed at least once).
+    //
+    // Returns: true or false
+    cachePathReady: function(path) {
+      this._validatePath(path);
+      var settings = this._query(path);
+      //if data==true, both folders listings and documents should be cached
+      //if data==false, only folder listings should be cached;
+      //hence the 'isDir(path) || ...'
+      return ((typeof(settings) == 'object') && (settings.ready) && (isDir(path) || settings.data));
     },
 
     /**
@@ -4210,6 +4242,11 @@ Math.uuid = function (len, radix) {
         (function (path) {
           RemoteStorage.Sync.sync(rs.remote, rs.local, path, rs.caching.get(path)).
             then(function() {
+              var obj = this.caching.get(path);
+              if(!obj.ready) {
+                obj.ready = true;
+                this.caching.set(path, obj);
+              }
               if (aborted) { return; }
               i++;
               if (n === i) {
@@ -4217,6 +4254,7 @@ Math.uuid = function (len, radix) {
                 promise.fulfill();
               }
             }, function(error) {
+              this.caching.set(path, {data: true, ready: true});
               console.error('syncing', path, 'failed:', error);
               if (aborted) { return; }
               aborted = true;
@@ -4304,9 +4342,9 @@ Math.uuid = function (len, radix) {
    *       They have "oldValue" and "newValue" properties, which can be used to
    *       distinguish create/update/delete operations and analyze changes in
    *       change handlers. In addition they carry a "origin" property, which
-   *       is either "window" or "remote". "remote" events are fired whenever the
-   *       "incoming" flag is passed to #put() or #delete(). This is usually done
-   *       by RemoteStorage.Sync.
+   *       is either "window", "local", or "remote". "remote" events are fired
+   *       whenever the "incoming" flag is passed to #put() or #delete(). This
+   *       is usually done by RemoteStorage.Sync.
    *
    *   The revision interface (also on RemoteStorage.IndexedDB object):
    *     - #setRevision(path, revision) sets the current revision for the given
@@ -4606,7 +4644,7 @@ Math.uuid = function (len, radix) {
           if (path.substr(-1) !== '/') {
             this._emit('change', {
               path: path,
-              origin: 'remote',
+              origin: 'local',
               oldValue: undefined,
               newValue: cursor.value.body
             });
@@ -5017,7 +5055,7 @@ Math.uuid = function (len, radix) {
           var node = this._get(path);
           this._emit('change', {
             path: path,
-            origin: 'remote',
+            origin: 'local',
             oldValue: undefined,
             newValue: node.body
           });
