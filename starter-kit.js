@@ -64,7 +64,7 @@ function launch() {
       console.log('make sure ./apps/ exists');
     } else {
       setApps(listing);
-      server = require('./remotestorage-server').createInstance(kv, config);
+      server = require('./localhost-server').createInstance(kv, config);
       http.createServer(serve).listen(config.port, function(){
         console.log('See http://' + config.host +':' + config.port + '/');
       });
