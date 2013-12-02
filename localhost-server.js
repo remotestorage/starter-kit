@@ -3,6 +3,15 @@ var fs = require('fs'),
   crypto = require('crypto');
 
 exports.createInstance = function(kv, config) {
+  var tokenStore = {
+    get: function(k) { return kv.get('token:'+k); },
+    set: function(k, v) { return kv.set('token:'+k, v); }
+  };
+  var dataStore = {
+    get: function(k) { return kv.get('data:'+k); },
+    set: function(k, v) { return kv.set('data:'+k, v); }
+  };
+
   function makeScopePaths(userName, scopes) {
     var scopePaths=[];
     for(var i=0; i<scopes.length; i++) {
@@ -21,30 +30,13 @@ exports.createInstance = function(kv, config) {
     console.log(str);
   }
   
-  function addToken(token, scopes) {
-    kv.set('tokens:'+token, makeScopePaths('me', scopes));
-  }
-
-  function createInitialTokens() {
-    if(! config.initialTokens) {
-      return;
-    }
-    for(var token in config.initialTokens) {
-      var scopePaths = makeScopePaths(
-        config.defaultUserName, config.initialTokens[token]
-      );
-      log('adding ',scopePaths,' for', token);
-      kv.set('token:'+token, scopePaths);
-    }
-  }
-
   function createToken(userName, scopes, cb) {
     crypto.randomBytes(48, function(ex, buf) {
       var token = buf.toString('hex');
       var scopePaths = makeScopePaths(userName, scopes);
       log('createToken ',userName,scopes);
       log('adding ',scopePaths,' for',token);
-      kv.set('token:'+token, scopePaths);
+      tokenStore.set(token, scopePaths);
       cb(token);
     });
   }
@@ -155,49 +147,7 @@ exports.createInstance = function(kv, config) {
       writeHtml(res, '<a href="'+toHtml(redirectUri)+'#access_token='+toHtml(token)+'">Allow</a>');
     });
   }
-  function getVersion(path) {
-    if(kv.get('version:'+path)) {
-      return kv.get('version:'+path);
-    }
-    if(path.substr(-1)=='/') {
-      return 'empty-dir';
-    }
-  }
-  function condMet(cond, path) {
-    if(cond.ifNoneMatch=='*') {//if-none-match is either '*'...
-      if(kv.get('content:'+path)) {
-        return false;
-      }
-    } else if(cond.ifNoneMatch && getVersion(path)) {//or a comma-separated list of etags
-      if(cond.ifNoneMatch.split(',').indexOf(String('"'+getVersion(path)+'"'))!=-1) {
-        return false;
-      }
-    }
-    if(cond.ifMatch) {//if-match is always exactly 1 etag
-      if(kv.get('version:'+path) != cond.ifMatch) {
-        return false;
-      }
-    }
-    return true;
-  }
-  function toJsonLd(revisions) {
-    var items = {};
-    for(var i in revisions) {
-      items[i] = { ETag: revisions[i] };
-    }
-    return {
-      '@context': 'http://remotestorage.io/spec/folder-description',
-      items: items
-    };
-  }
-  var tokenStore = {
-    get: function(k) { return kv.get('token:'+k); },
-    set: function(k, v) { return kv.set('token:'+k, v); }
-  };
-  var dataStore = {
-    get: function(k) { return kv.get('data:'+k); },
-    set: function(k, v) { return kv.set('data:'+k, v); }
-  };
+
   var storage = require('./remotestorage-server').createServer(tokenStore, dataStore);
   
   return {

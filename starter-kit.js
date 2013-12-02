@@ -4,9 +4,6 @@ var fs = require('fs'),
   static = require('node-static');
 
 var config = {
-  initialTokens: {
-    'my_secret_bearer_token': [':rw']
-  },
   defaultUserName: 'me',
   host: 'localhost',
   port: 80,
