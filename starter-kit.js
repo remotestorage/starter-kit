@@ -1,26 +1,15 @@
 var fs = require('fs'),
   http = require('http'),
+  url = require('url'),
   static = require('node-static');
-    
-var dontPersist = true;
 
-if(! fs.existsSync) {
-  fs.existsSync = function(path) {
-    try {
-      fs.statSync(path);
-      return true;
-    } catch(e) {
-      return false;
-    }
-  };
-}
-
-var amd = false;
-if(typeof(exports) === 'undefined') {
-  var exports = {};
-  amd = true;
-}
-
+var config = {
+  defaultUserName: 'me',
+  host: 'localhost',
+  port: 80,
+  firstAppPort: 8001,
+  apps: {}
+};
 
 function staticServer(path) {
   var file = new static.Server(path);
@@ -31,39 +20,54 @@ function staticServer(path) {
   };
 }
 
-if((!amd) && (require.main==module)) {//if this file is directly called from the CLI
+function setApps(listing) {
+  for(var i=0; i<listing.length; i++) {
+    var listener = staticServer('./apps/'+listing[i]);
+    http.createServer(listener).listen(config.firstAppPort+i);
+    config.apps['http://localhost:'+(config.firstAppPort+i)+'/'] = listing[i];
+  }
+}
+  
+var kv = (function() {
+  var store = {};
+  return {
+    set: function(k, v) { store[k] = v; },
+    get: function(k) { return store[k]; }
+  };
+ })();
+
+var server;
+
+function serve(req, res) {
+  var urlObj = url.parse(req.url, true), userAddress, userName;
+  console.log(urlObj);
+  if(urlObj.pathname == '/') {
+    server.portal(req, res);
+  } else if(urlObj.pathname == '/.well-known/webfinger') {
+    server.webfinger(req, res);
+  } else if(urlObj.pathname.substring(0, '/auth/'.length) == '/auth/') {
+    server.oauth(req, res);
+  } else if(urlObj.pathname.substring(0, '/storage/'.length) == '/storage/') {
+    server.storage(req, res);
+  } else {
+    res.writeHead(404);
+    res.end();
+  }
+}
+
+function launch() {
   fs.readdir('./apps/', function(err, listing) {
     if(err) {
       console.log('make sure ./apps/ exists');
     } else {
-      var config = {
-        initialTokens: {
-          'my_secret_bearer_token': [':rw']
-        },
-        defaultUserName: 'me',
-        host: 'localhost',
-        port: 80,
-        firstAppPort: 8001,
-        apps: {}
-     };
-
-     for(var i=0; i<listing.length; i++) {
-        console.log('setting listener');
-        var listener = staticServer('./apps/'+listing[i]);
-        console.log('starting server');
-        http.createServer(listener).listen(config.firstAppPort+i);
-        config.apps['http://localhost:'+(config.firstAppPort+i)+'/'] = listing[i];
-      }
-      var server = require('./remotestorage-server').server(config);
-      dontPersist = process.argv.length > 1 && (process.argv.slice(-1)[0] == ('--no-persistence'));
-      server.init();
-      http.createServer(server.serve).listen(config.port, function(){
-        console.log('Example server started on http://' + config.host +':' + config.port + '/');
+      setApps(listing);
+      server = require('./localhost-server').createInstance(kv, config);
+      http.createServer(serve).listen(config.port, function(){
+        console.log('See http://' + config.host +':' + config.port + '/');
       });
     }
   });
 }
 
-if(amd) {
-  define([], exports);
-}
+//...
+launch();
