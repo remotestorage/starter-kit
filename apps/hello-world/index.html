@@ -8,9 +8,9 @@
     <p>
       Please connect your remote storage.
     </p>
+    Your name: <input id="text" />
+    <input id="save" type="submit" value="save" />
     <div id="current"></div>
-    <input id="text" />
-    <input id="up" type="submit" value="up" />
   </body>
   <script src="remotestorage.js"></script>
   <script src="notes.js"></script>
@@ -19,19 +19,19 @@
 
     function displayNote() {
       remoteStorage.notes.getNote().then(function(text) {
-          $('current').innerHTML = text || '';
+          $('current').innerHTML = text ? 'Hello '+text : '';
       });
     }
 
     remoteStorage.access.claim('notes', 'rw');
     remoteStorage.displayWidget();
     remoteStorage.notes.onChange(displayNote);
-    $('up').onclick = function() {
+    $('save').onclick = function() {
       remoteStorage.notes.setNote($('text').value);
     };
     $('text').addEventListener('keypress', function(e) {
       if(e.keyCode == 13) {//<enter>
-        $('up').onclick();
+        $('save').onclick();
       }
     }, false);
 
