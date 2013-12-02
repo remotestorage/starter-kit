@@ -44,44 +44,9 @@ exports.createInstance = function(kv, config) {
       var scopePaths = makeScopePaths(userName, scopes);
       log('createToken ',userName,scopes);
       log('adding ',scopePaths,' for',token);
-      kv.set('tokens:'+token, scopePaths);
+      kv.set('token:'+token, scopePaths);
       cb(token);
     });
-  }
-  function mayRead(authorizationHeader, path) {
-    if(authorizationHeader) {
-      var scopes = kv.get('tokens:'+authorizationHeader.substring('Bearer '.length));
-      if(scopes) {
-        for(var i=0; i<scopes.length; i++) {
-          var scopeParts = scopes[i].split(':');
-          if(path.substring(0, scopeParts[0].length)==scopeParts[0]) {
-            return true;
-          } else {
-            log(path.substring(0, scopeParts[0].length)+' != '+ scopeParts[0]);
-          }
-        }
-      }
-    } else {
-      var pathParts = path.split('/');
-      console.log('pathParts are', pathParts);
-      return (pathParts[0]=='me' && pathParts[1]=='public' && path.substr(-1) != '/');
-    }
-  }
-  function mayWrite(authorizationHeader, path) { 
-    if(path.substr(-1)=='/') {
-      return false;
-    }
-    if(authorizationHeader) {
-      var scopes = kv.get('tokens:'+authorizationHeader.substring('Bearer '.length));
-      if(scopes) {
-        for(var i=0; i<scopes.length; i++) {
-          var scopeParts = scopes[i].split(':');
-          if(scopeParts.length==2 && scopeParts[1]=='rw' && path.substring(0, scopeParts[0].length)==scopeParts[0]) {
-            return true;
-          }
-        }
-      }
-    }
   }
   function writeHead(res, status, origin, timestamp, contentType, contentLength) {
     console.log('writeHead', status, origin, timestamp, contentType, contentLength);
@@ -225,8 +190,15 @@ exports.createInstance = function(kv, config) {
       items: items
     };
   }
-  
-  var storage = require('./remotestorage-server').createServer(kv);
+  var tokenStore = {
+    get: function(k) { return kv.get('token:'+k); },
+    set: function(k, v) { return kv.set('token:'+k, v); }
+  };
+  var dataStore = {
+    get: function(k) { return kv.get('data:'+k); },
+    set: function(k, v) { return kv.set('data:'+k, v); }
+  };
+  var storage = require('./remotestorage-server').createServer(tokenStore, dataStore);
   
   return {
     portal: portal,

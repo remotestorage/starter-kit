@@ -2,7 +2,7 @@ var fs = require('fs'),
   url = require('url'),
   crypto = require('crypto');
 
-exports.createServer = function(kv) {
+exports.createServer = function(tokenStore, dataStore) {
   function makeScopePaths(userName, scopes) {
     var scopePaths=[];
     for(var i=0; i<scopes.length; i++) {
@@ -23,7 +23,7 @@ exports.createServer = function(kv) {
   
   function mayRead(authorizationHeader, path) {
     if(authorizationHeader) {
-      var scopes = kv.get('tokens:'+authorizationHeader.substring('Bearer '.length));
+      var scopes = tokenStore.get(authorizationHeader.substring('Bearer '.length));
       if(scopes) {
         for(var i=0; i<scopes.length; i++) {
           var scopeParts = scopes[i].split(':');
@@ -45,7 +45,7 @@ exports.createServer = function(kv) {
       return false;
     }
     if(authorizationHeader) {
-      var scopes = kv.get('tokens:'+authorizationHeader.substring('Bearer '.length));
+      var scopes = tokenStore.get(authorizationHeader.substring('Bearer '.length));
       if(scopes) {
         for(var i=0; i<scopes.length; i++) {
           var scopeParts = scopes[i].split(':');
@@ -96,8 +96,8 @@ exports.createServer = function(kv) {
     res.end();
   }
   function getVersion(path) {
-    if(kv.get('version:'+path)) {
-      return kv.get('version:'+path);
+    if(dataStore.get('version:'+path)) {
+      return dataStore.get('version:'+path);
     }
     if(path.substr(-1)=='/') {
       return 'empty-dir';
@@ -105,7 +105,7 @@ exports.createServer = function(kv) {
   }
   function condMet(cond, path) {
     if(cond.ifNoneMatch=='*') {//if-none-match is either '*'...
-      if(kv.get('content:'+path)) {
+      if(dataStore.get('content:'+path)) {
         return false;
       }
     } else if(cond.ifNoneMatch && getVersion(path)) {//or a comma-separated list of etags
@@ -114,7 +114,7 @@ exports.createServer = function(kv) {
       }
     }
     if(cond.ifMatch) {//if-match is always exactly 1 etag
-      if(kv.get('version:'+path) != cond.ifMatch) {
+      if(dataStore.get('version:'+path) != cond.ifMatch) {
         return false;
       }
     }
@@ -150,13 +150,13 @@ exports.createServer = function(kv) {
       if(!mayRead(req.headers.authorization, path)) {
         computerSaysNo(res, req.headers.origin, 401);
       } else if(!condMet(cond, path)) {
-        computerSaysNo(res, req.headers.origin, 304, kv.get('version:'+path));
+        computerSaysNo(res, req.headers.origin, 304, dataStore.get('version:'+path));
       } else {
-        if(kv.get('content:'+path)) {
+        if(dataStore.get('content:'+path)) {
           if(path.substr(-1)=='/') {
-            writeJson(res, '', req.headers.origin, kv.get('version:'+path), cond);
+            writeJson(res, '', req.headers.origin, dataStore.get('version:'+path), cond);
           } else {
-            writeRaw(res, kv.get('contentType:'+path), '', req.headers.origin, kv.get('version:'+path), cond);
+            writeRaw(res, dataStore.get('contentType:'+path), '', req.headers.origin, dataStore.get('version:'+path), cond);
           }
         } else {
           if(path.substr(-1) == '/' && path.split('/').length == 2) {
@@ -171,13 +171,13 @@ exports.createServer = function(kv) {
       if(!mayRead(req.headers.authorization, path)) {
         computerSaysNo(res, req.headers.origin, 401);
       } else if(!condMet(cond, path)) {
-        computerSaysNo(res, req.headers.origin, 304, kv.get('version:'+path));
+        computerSaysNo(res, req.headers.origin, 304, dataStore.get('version:'+path));
       } else {
-        if(kv.get('content:'+path)) {
+        if(dataStore.get('content:'+path)) {
           if(path.substr(-1)=='/') {
-            writeJson(res, toJsonLd(kv.get('content:'+path)), req.headers.origin, kv.get('version:'+path), cond);
+            writeJson(res, toJsonLd(dataStore.get('content:'+path)), req.headers.origin, dataStore.get('version:'+path), cond);
           } else {
-            writeRaw(res, kv.get('contentType:'+path), kv.get('content:'+path), req.headers.origin, kv.get('version:'+path), cond);
+            writeRaw(res, dataStore.get('contentType:'+path), dataStore.get('content:'+path), req.headers.origin, dataStore.get('version:'+path), cond);
           }
         } else {
           if(path.substr(-1) == '/') {//empty dir
@@ -194,7 +194,7 @@ exports.createServer = function(kv) {
       } else if(!mayWrite(req.headers.authorization, path)) {
         computerSaysNo(res, req.headers.origin, 401);
       } else if(!condMet(cond, path)) {
-        computerSaysNo(res, req.headers.origin, 412, kv.get('version:'+path));
+        computerSaysNo(res, req.headers.origin, 412, dataStore.get('version:'+path));
       } else {
         var dataStr = '';
         req.on('data', function(chunk) {
@@ -202,10 +202,10 @@ exports.createServer = function(kv) {
         });
         req.on('end', function() {
           var timestamp = new Date().getTime();
-          kv.set('content:'+path, dataStr);
-          kv.set('contentType:'+path, req.headers['content-type']);
-          log('stored '+path, kv.get('content:'+path), kv.get('contentType:'+path));
-          kv.set('version:'+path, timestamp);
+          dataStore.set('content:'+path, dataStr);
+          dataStore.set('contentType:'+path, req.headers['content-type']);
+          log('stored '+path, dataStore.get('content:'+path), dataStore.get('contentType:'+path));
+          dataStore.set('version:'+path, timestamp);
           var pathParts=path.split('/');
           log(pathParts);
           var fileItself=true;
@@ -216,13 +216,13 @@ exports.createServer = function(kv) {
             } else {
               thisPart += '/';
             }
-            var obj = kv.get('content:'+pathParts.join('/')+'/');
+            var obj = dataStore.get('content:'+pathParts.join('/')+'/');
             if(!obj) {
               obj = {};
             }
             obj[thisPart] = timestamp;
-            kv.set('content:'+pathParts.join('/')+'/', obj);
-            kv.set('version:'+pathParts.join('/')+'/', timestamp);
+            dataStore.set('content:'+pathParts.join('/')+'/', obj);
+            dataStore.set('version:'+pathParts.join('/')+'/', timestamp);
           }
           writeJson(res, null, req.headers.origin, timestamp);
         });
@@ -234,28 +234,28 @@ exports.createServer = function(kv) {
       } else if(!mayWrite(req.headers.authorization, path)) {
         computerSaysNo(res, req.headers.origin, 401);
       } else if(!condMet(cond, path)) {
-        computerSaysNo(res, req.headers.origin, 412, kv.get('version:'+path));
-      } else if(typeof(kv.get('content:'+path)) == 'undefined') {
+        computerSaysNo(res, req.headers.origin, 412, dataStore.get('version:'+path));
+      } else if(typeof(dataStore.get('content:'+path)) == 'undefined') {
         computerSaysNo(res, req.headers.origin, 404);
       } else {
-        var timestamp = kv.get('version:'+path);
-        kv.set('content:'+path, undefined);
-        kv.set('contentType:'+path, undefined);
-        kv.set('version:'+path, undefined);
+        var timestamp = dataStore.get('version:'+path);
+        dataStore.set('content:'+path, undefined);
+        dataStore.set('contentType:'+path, undefined);
+        dataStore.set('version:'+path, undefined);
         var pathParts=path.split('/');
         var thisPart = pathParts.pop();
         while(1) {
           var parentPath = pathParts.join('/') + '/';
-          var parentListing = kv.get('content:'+parentPath);
+          var parentListing = dataStore.get('content:'+parentPath);
           log('delete content[' + parentPath + ']['+thisPart+']');
           delete parentListing[thisPart];
           if(Object.keys(parentListing).length != 0 ||
              pathParts.length == 1) {
-            kv.set('version:'+parentPath, new Date().getTime());
+            dataStore.set('version:'+parentPath, new Date().getTime());
             break;
           } else {
-            kv.set('content:'+parentPath, undefined);
-            kv.set('version:'+parentPath, undefined);
+            dataStore.set('content:'+parentPath, undefined);
+            dataStore.set('version:'+parentPath, undefined);
             thisPart = pathParts.pop() + '/';
           }
         }
