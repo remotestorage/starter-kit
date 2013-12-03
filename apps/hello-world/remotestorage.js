@@ -130,7 +130,7 @@
 
   var SyncedGetPutDelete = {
     get: function(path) {
-      if (this.caching.cachePathReady(path)) {
+      if ((!this.remote.connected) || (this.caching.cachePathReady(path))) {
         return this.local.get(path);
       } else {
         return this.remote.get(path);
@@ -3826,10 +3826,11 @@ Math.uuid = function (len, radix) {
     cachePath: function(path) {
       this._validatePath(path);
       var settings = this._query(path);
-      //if data==true, both folders listings and documents should be cached
-      //if data==false, only folder listings should be cached;
-      //hence the 'isDir(path) || ...'
-      return settings && (isDir(path) || settings.data);
+      if(isDir(path)) {
+        return !!settings;
+      } else {
+        return !!settings && (settings.data==true);
+      }
     },
 
     /**
@@ -3840,12 +3841,11 @@ Math.uuid = function (len, radix) {
      * Returns: true or false
      */
     cachePathReady: function(path) {
-      this._validatePath(path);
+      if(!this.cachePath(path)) {
+        return false;
+      }
       var settings = this._query(path);
-      //if data==true, both folder listings and documents should be cached
-      //if data==false, only folder listings should be cached;
-      //hence the 'isDir(path) || ...'
-      return ((typeof(settings) === 'object') && (settings.ready) && (isDir(path) || settings.data));
+      return ((typeof(settings) === 'object') && (settings.ready));
     },
 
     /**
