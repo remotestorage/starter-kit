@@ -23,6 +23,10 @@
       });
     }
 
+    remoteStorage.enableLog();
+    remoteStorage.setApiKeys('googledrive', {
+      client_id: '76638044554.apps.googleusercontent.com'
+    });
     remoteStorage.setBackend('googledrive');
     remoteStorage.access.claim('notes', 'rw');
     remoteStorage.displayWidget();
