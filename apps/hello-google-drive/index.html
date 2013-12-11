@@ -1,0 +1,40 @@
+<!DOCTYPE>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Minimal remoteStorage.js Example App</title>
+  </head>
+  <body>
+    <p>
+      Please connect your remote storage.
+    </p>
+    Your name: <input id="text" />
+    <input id="save" type="submit" value="save" />
+    <div id="current"></div>
+  </body>
+  <script src="remotestorage.js"></script>
+  <script src="notes.js"></script>
+  <script>
+    function $(id) { return document.getElementById(id); }
+
+    function displayNote() {
+      remoteStorage.notes.getNote().then(function(text) {
+          $('current').innerHTML = text ? 'Hello '+text : '';
+      });
+    }
+
+    remoteStorage.access.claim('notes', 'rw');
+    remoteStorage.displayWidget();
+    remoteStorage.notes.onChange(displayNote);
+    $('save').onclick = function() {
+      remoteStorage.notes.setNote($('text').value);
+    };
+    $('text').addEventListener('keypress', function(e) {
+      if(e.keyCode == 13) {//<enter>
+        $('save').onclick();
+      }
+    }, false);
+
+    displayNote();
+  </script>
+</html>
