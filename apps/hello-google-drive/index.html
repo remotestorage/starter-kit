@@ -23,6 +23,7 @@
       });
     }
 
+    remoteStorage.setBackend('googledrive');
     remoteStorage.access.claim('notes', 'rw');
     remoteStorage.displayWidget();
     remoteStorage.notes.onChange(displayNote);
