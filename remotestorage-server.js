@@ -60,7 +60,8 @@ exports.createServer = function(tokenStore, dataStore) {
     console.log('writeHead', status, origin, timestamp, contentType, contentLength);
     var headers = {
       'Access-Control-Allow-Origin': (origin?origin:'*'),
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Origin',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Origin, If-Match, If-None-Match',
+      'Access-Control-Expose-Headers': 'Content-Type, Content-Length, ETag',
       'Access-Control-Allow-Methods': 'GET, PUT, DELETE',
       'Expires': '0'
     };
