@@ -16,7 +16,7 @@ exports.createInstance = function(kv, config) {
     var scopePaths=[];
     for(var i=0; i<scopes.length; i++) {
       var thisScopeParts = scopes[i].split(':');
-      if(thisScopeParts[0]=='') {
+      if(thisScopeParts[0]=='*') {
         scopePaths.push(userName+'/:'+thisScopeParts[1]);
       } else {
         scopePaths.push(userName+'/'+thisScopeParts[0]+'/:'+thisScopeParts[1]);
@@ -103,7 +103,7 @@ exports.createInstance = function(kv, config) {
     for(var i in config.apps) {
       outstanding++;
       (function(i) {
-        createToken(config.defaultUserName, [':rw'], function(token) {
+        createToken(config.defaultUserName, ['*:rw'], function(token) {
           res.write('<li><a href="'+i+'#remotestorage=me@localhost'
                     +'&access_token='+token+'">'+config.apps[i]+'</a></li>');
           outstanding--;
