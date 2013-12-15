@@ -124,11 +124,11 @@ exports.createInstance = function(kv, config) {
     }
     writeJson(res, {
       links:[{
-        href: 'http://'+config.host+':'+config.port+'/storage/'+userName,
+        href: 'http://'+config.host+':'+config.storagePort+'/storage/'+userName,
         rel: "remotestorage",
         properties: {
           'http://remotestorage.io/spec/version': 'draft-dejong-remotestorage-02',
-          'http://tools.ietf.org/html/rfc6749#section-4.2': 'http://'+config.host+':'+config.port+'/auth/'+userName,
+          'http://tools.ietf.org/html/rfc6749#section-4.2': 'http://'+config.host+'/auth/'+userName,
           'http://tools.ietf.org/html/rfc6750#section-2.3': false,
           'http://tools.ietf.org/html/rfc2616#section-14.16': false
         }

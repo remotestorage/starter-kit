@@ -6,6 +6,7 @@ var fs = require('fs'),
 var config = {
   defaultUserName: 'me',
   host: 'localhost',
+  storagePort: 8000,
   firstAppPort: 8001,
   apps: {}
 };
@@ -37,7 +38,7 @@ var kv = (function() {
 
 var server;
 
-function serve(req, res) {
+function serveMain(req, res) {
   var urlObj = url.parse(req.url, true), userAddress, userName;
   console.log(urlObj);
   if(urlObj.pathname == '/') {
@@ -46,7 +47,16 @@ function serve(req, res) {
     server.webfinger(req, res);
   } else if(urlObj.pathname.substring(0, '/auth/'.length) == '/auth/') {
     server.oauth(req, res);
-  } else if(urlObj.pathname.substring(0, '/storage/'.length) == '/storage/') {
+  } else {
+    res.writeHead(404);
+    res.end();
+  }
+}
+
+function serveStorage(req, res) {
+  var urlObj = url.parse(req.url, true), userAddress, userName;
+  console.log(urlObj);
+  if(urlObj.pathname.substring(0, '/storage/'.length) == '/storage/') {
     server.storage(req, res);
   } else {
     res.writeHead(404);
@@ -61,9 +71,9 @@ function launch() {
     } else {
       setApps(listing);
       server = require('./localhost-server').createInstance(kv, config);
-      http.createServer(serve).listen(80, function(){
-        console.log('See http://' + config.host + '/');
-      });
+      http.createServer(serveMain).listen(80);
+      http.createServer(serveStorage).listen(config.storagePort);
+      console.log('See http://' + config.host + '/');
     }
   });
 }
