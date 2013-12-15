@@ -6,7 +6,6 @@ var fs = require('fs'),
 var config = {
   defaultUserName: 'me',
   host: 'localhost',
-  port: 80,
   firstAppPort: 8001,
   apps: {}
 };
@@ -62,8 +61,8 @@ function launch() {
     } else {
       setApps(listing);
       server = require('./localhost-server').createInstance(kv, config);
-      http.createServer(serve).listen(config.port, function(){
-        console.log('See http://' + config.host +':' + config.port + '/');
+      http.createServer(serve).listen(80, function(){
+        console.log('See http://' + config.host + '/');
       });
     }
   });
