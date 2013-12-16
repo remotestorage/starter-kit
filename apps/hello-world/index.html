@@ -35,6 +35,25 @@
       }
     }, false);
 
+    function setThings() {
+      for(var i=0;i<100;i++) {
+        (function(i) {
+          remoteStorage.notes.setThing('thing'+i, 'bla bla bla').then(
+            function(thing) { console.log('set thing success', i); },
+            function(error) { console.log('set thing error', i, error); });
+        })(i);
+      }
+    }
+    function getThings() {
+      for(var i=0;i<100;i++) {
+        (function(i) {
+          remoteStorage.notes.getThing('thing'+i).then(
+            function(thing) { console.log('get thing success', i, thing); },
+            function(error) { console.log('get thing error', i, error); });
+        })(i);
+      }
+    }
+    getThings();
     displayNote();
   </script>
 </html>

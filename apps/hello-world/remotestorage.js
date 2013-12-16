@@ -339,6 +339,7 @@
      *
      */
     connect: function(userAddress) {
+      this.setBackend('remotestorage');
       if (userAddress.indexOf('@') < 0) {
         this._emit('error', new RemoteStorage.DiscoveryError("User adress doesn't contain an @."));
         return;
@@ -4002,6 +4003,7 @@ Math.uuid = function (len, radix) {
           this.readyPromises[path] = [];
         }
         this.readyPromises[path].push(promise);
+        console.log('now have '+this.readyPromises[path].length+' promises queued for '+path);
       }
       return promise;
     },
@@ -4023,6 +4025,7 @@ Math.uuid = function (len, radix) {
         if(path.substring(0, rootPath.length)==rootPath) {
           for(i=0; i<this.readyPromises[path].length; i++) {
             this.readyPromises[path][i].fulfill();
+            console.log('fulfilling promise '+i+' for '+path);
           }
           delete this.readyPromises[path];
         }
