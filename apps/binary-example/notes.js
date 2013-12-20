@@ -10,6 +10,12 @@ RemoteStorage.defineModule('notes', function(privateClient, publicClient) {
           return obj.data;
         });
       },
+      setImage: function (arrBuff, contentType) {
+        return privateClient.storeFile(contentType, 'image.img', arrBuff);
+      },
+      getImage: function () {
+        return privateClient.getFile('image.img');
+      },
       onChange: function (cb) {
         privateClient.on('change', cb);
       }

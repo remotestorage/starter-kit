@@ -11,26 +11,45 @@
     Your image:
 
 <!-- code from http://www.html5rocks.com/en/tutorials/file/dndfiles/ start: -->
-	<input type="file" id="files" name="files[]" multiple />
-	<output id="list"></output>
+<style>
+  .thumb {
+    height: 75px;
+    border: 1px solid #000;
+    margin: 10px 5px 0 0;
+  }
+</style>
 
-	<script>
-	  function handleFileSelect(evt) {
-	    var files = evt.target.files; // FileList object
+<input type="file" id="files" name="files[]" multiple />
+<output id="list"></output>
 
-	    // files is a FileList of File objects. List some properties.
-	    var output = [];
-	    for (var i = 0, f; f = files[i]; i++) {
-	      output.push('<li><strong>', escape(f.name), '</strong> (', f.type || 'n/a', ') - ',
-			  f.size, ' bytes, last modified: ',
-			  f.lastModifiedDate ? f.lastModifiedDate.toLocaleDateString() : 'n/a',
-			  '</li>');
-	    }
-	    document.getElementById('list').innerHTML = '<ul>' + output.join('') + '</ul>';
-	  }
+<script>
+  function handleFileSelect(evt) {
+    var files = evt.target.files; // FileList object
 
-	  document.getElementById('files').addEventListener('change', handleFileSelect, false);
-	</script>
+    // Loop through the FileList and render image files as thumbnails.
+    for (var i = 0, f; f = files[i]; i++) {
+
+      // Only process image files.
+      if (!f.type.match('image.*')) {
+        continue;
+      }
+
+      var reader = new FileReader();
+
+      // Closure to capture the file information.
+      reader.onload = (function(theFile) {
+        return function(e) {
+          remoteStorage.notes.setImage(e.target.result, theFile.type);
+        };
+      })(f);
+
+      // Read in the image file as an ArrayBuffer.
+      reader.readAsArrayBuffer(f);
+    }
+  }
+
+  document.getElementById('files').addEventListener('change', handleFileSelect, false);
+</script>
 <!-- code from http://www.html5rocks.com/en/tutorials/file/dndfiles/ end. -->
 
     <img id="current" />
@@ -40,24 +59,17 @@
   <script>
     function $(id) { return document.getElementById(id); }
 
-    function displayNote() {
-      remoteStorage.notes.getNote().then(function(text) {
-          $('current').innerHTML = text ? 'Hello '+text : '';
+    function displayImage() {
+      remoteStorage.notes.getImage().then(function(result) {
+<!-- code from http://remotestorage.io/doc/code/files/baseclient-js.html#RemoteStorage.BaseClient.getFile start: -->
+        var blob = new Blob([result.data], { type: result.mimeType });
+        $('current').src = window.URL.createObjectURL(blob);
+<!-- code from http://remotestorage.io/doc/code/files/baseclient-js.html#RemoteStorage.BaseClient.getFile end. -->
       });
     }
 
     remoteStorage.access.claim('notes', 'rw');
     remoteStorage.displayWidget();
-    remoteStorage.notes.onChange(displayNote);
-    $('save').onclick = function() {
-      remoteStorage.notes.setNote($('text').value);
-    };
-    $('text').addEventListener('keypress', function(e) {
-      if(e.keyCode == 13) {//<enter>
-        $('save').onclick();
-      }
-    }, false);
-
-    displayNote();
+    remoteStorage.notes.onChange(displayImage);
   </script>
 </html>

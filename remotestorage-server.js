@@ -115,7 +115,8 @@ exports.createServer = function(tokenStore, dataStore) {
       }
     }
     if(cond.ifMatch) {//if-match is always exactly 1 etag
-      if(dataStore.get('version:'+path) != cond.ifMatch) {
+      console.log(path, cond.ifMatch, dataStore);
+      if(String('"'+dataStore.get('version:'+path)+'"') != cond.ifMatch) {
         return false;
       }
     }
