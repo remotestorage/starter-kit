@@ -1,4 +1,4 @@
-/** remotestorage.js 0.9.0-pre, http://remotestorage.io, MIT-licensed **/
+/** remotestorage.js 0.9.0, http://remotestorage.io, MIT-licensed **/
 
 /** FILE: lib/promising.js **/
 (function(global) {
@@ -138,10 +138,10 @@
 
   var SyncedGetPutDelete = {
     get: function(path) {
-      var that = this;
+      var self = this;
       if (this.caching.cachePath(path)) {
         return this.caching.waitForPath(path).then(function() {
-          return that.local.get(path);
+          return self.local.get(path);
         });
       } else {
         return this.remote.get(path);
@@ -339,6 +339,7 @@
      *
      */
     connect: function(userAddress) {
+      this.setBackend('remotestorage');
       if (userAddress.indexOf('@') < 0) {
         this._emit('error', new RemoteStorage.DiscoveryError("User adress doesn't contain an @."));
         return;
@@ -1038,10 +1039,13 @@
     return path.replace(/\/+/g, '/').split('/').map(encodeURIComponent).join('/');
   }
 
+  function isDir(path) {
+    return (path.substr(-1) === '/');
+  }
+
   function isFolderDescription(body) {
-    return ((Object.keys(body).length === 2)
-                && (body['@context'] === 'http://remotestorage.io/spec/folder-description')
-                && (typeof(body['items']) === 'object'));
+    return ((body['@context'] === 'http://remotestorage.io/spec/folder-description')
+             && (typeof(body['items']) === 'object'));
   }
 
   var onErrorCb;
@@ -1171,42 +1175,46 @@
         }
       } else if (options.ifNoneMatch) {
         var oldRev = this._revisionCache[path];
-        if (oldRev === options.ifNoneMatch) {
-          // since sync descends for allKeys(local, remote), this causes
-          // https://github.com/remotestorage/remotestorage.js/issues/399
-          // commenting this out so that it gets the actual 404 from the
-          // server. this only affects legacy servers
-          // (this.supportsRevs==false):
-
-          // return promising().fulfill(412);
-          // FIXME empty block and commented code
-        }
       }
       var promise = request('GET', this.href + cleanPath(path), this.token, headers,
                             undefined, this.supportsRevs, this._revisionCache[path]);
-      if (this.supportsRevs || path.substr(-1) !== '/') {
+      if (!isDir(path)) {
         return promise;
       } else {
         return promise.then(function(status, body, contentType, revision) {
-          var tmp;
+          var listing = {};
+
+          // New directory listing received
           if (status === 200 && typeof(body) === 'object') {
+            // Empty directory listing of any spec
             if (Object.keys(body).length === 0) {
-              // no children (coerce response to 'not found')
               status = 404;
-            } else if(isFolderDescription(body)) {
-              tmp = {};
-              for(var item in body.items) {
-                this._revisionCache[path + item] = body.items[item].ETag;
-                tmp[item] = body.items[item].ETag;
-              }
-              body = tmp;
-            } else {//pre-02 server
-              for(var key in body) {
-                this._revisionCache[path + key] = body[key];
-              }
             }
+            // >= 02 spec
+            else if (isFolderDescription(body)) {
+              for (var item in body.items) {
+                this._revisionCache[path + item] = body.items[item].ETag;
+              }
+              listing = body.items;
+            }
+            // < 02 spec
+            else {
+              Object.keys(body).forEach(function(key){
+                this._revisionCache[path + key] = body[key];
+                listing[key] = {"ETag": body[key]};
+              }.bind(this));
+            }
+            return promising().fulfill(status, listing, contentType, revision);
           }
-          return promising().fulfill(status, body, contentType, revision);
+          // Cached directory listing received
+          else if (status === 304) {
+            return promising().fulfill(status, body, contentType, revision);
+          }
+          // Faulty directory listing received
+          else {
+            var error = new Error("Received faulty directory response for: "+path);
+            return promising().reject(error);
+          }
         }.bind(this));
       }
     },
@@ -3424,19 +3432,11 @@ Math.uuid = function (len, radix) {
       } else if (path.length > 0 && path[path.length - 1] !== '/') {
         throw "Not a directory: " + path;
       }
-      return this.storage.get(this.makePath(path)).then(function(status, body) {
-        if (status === 404 || typeof(body) !== 'object') { return; }
-
-        if (body['@context'] === 'http://remotestorage.io/spec/folder-description') {
-          return body.items;
-        } else {
-          var listing = {};
-          Object.keys(body).forEach(function(key){
-            listing[key] = {"ETag": body[key]};
-          });
-          return listing;
+      return this.storage.get(this.makePath(path)).then(
+        function(status, body) {
+          return (status === 404) ? undefined : body;
         }
-      });
+      );
     },
 
     /**
@@ -3839,9 +3839,19 @@ Math.uuid = function (len, radix) {
   SchemaNotFound.prototype = Error.prototype;
 
   RemoteStorage.BaseClient.Types.SchemaNotFound = SchemaNotFound;
-
+  /**
+   * Class: RemoteStorage.BaseClient
+   **/
   RemoteStorage.BaseClient.prototype.extend({
-
+    /**
+     * Method: validate(object)
+     *
+     * validates an Object against the associated schema
+     * the context has to have a @context property
+     *
+     * Returns:
+     *   A validate object giving you information about errors 
+     **/
     validate: function(object) {
       var schema = RemoteStorage.BaseClient.Types.getSchema(object['@context']);
       if(schema) {
@@ -3950,7 +3960,7 @@ Math.uuid = function (len, radix) {
     },
 
     set: function(path, settings) {
-      if((typeof(settings)=='object') && (settings.ready)) {
+      if((typeof(settings) === 'object') && (settings.ready)) {
         this.resolveQueue(path);
       }
       this._validateDirPath(path);
@@ -3995,13 +4005,13 @@ Math.uuid = function (len, radix) {
       if(this.cachePathReady(path)) {
         promise.fulfill();
       } else {
-        if(!this.readyPromises) {
-          this.readyPromises = {};
+        if(!this.queuedPromises) {
+          this.queuedPromises = {};
         }
-        if(!this.readyPromises[path]) {
-          this.readyPromises[path] = [];
+        if(!this.queuedPromises[path]) {
+          this.queuedPromises[path] = [];
         }
-        this.readyPromises[path].push(promise);
+        this.queuedPromises[path].push(promise);
       }
       return promise;
     },
@@ -4016,15 +4026,15 @@ Math.uuid = function (len, radix) {
      */
     resolveQueue: function(rootPath) {
       var path, i;
-      if(!this.readyPromises) {
+      if(!this.queuedPromises) {
         return;
       }
-      for(path in this.readyPromises) {
-        if(path.substring(0, rootPath.length)==rootPath) {
-          for(i=0; i<this.readyPromises[path].length; i++) {
-            this.readyPromises[path][i].fulfill();
+      for(path in this.queuedPromises) {
+        if(path.substring(0, rootPath.length) === rootPath) {
+          for(i=0; i<this.queuedPromises[path].length; i++) {
+            this.queuedPromises[path][i].fulfill();
           }
-          delete this.readyPromises[path];
+          delete this.queuedPromises[path];
         }
       }
     },
@@ -4199,25 +4209,23 @@ Math.uuid = function (len, radix) {
 
   function updateLocal(remote, local, path, body, contentType, revision, promise) {
     if (isDir(path)) {
-      descendInto(remote, local, path, Object.keys(body), promise);
-    } else {
-      local.put(path, body, contentType, true, revision).then(function() {
-        return local.setRevision(path, revision);
-      }).then(function() {
-        promise.fulfill();
+      local.putDirectory(path, body, revision).then(function() {
+        descendInto(remote, local, path, Object.keys(body), promise);
       });
+    } else {
+      local.put(path, body, contentType, true, revision).then(promise.fulfill);
     }
   }
 
   function allDifferentKeys(a, b) {
     var keyObject = {};
     for (var ak in a) {
-      if (a[ak] !== b[ak]) {
+      if (JSON.stringify(a[ak]) !== JSON.stringify(b[ak])) {
         keyObject[ak] = true;
       }
     }
     for (var bk in b) {
-      if (a[bk] !== b[bk]) {
+      if (JSON.stringify(a[bk]) !== JSON.stringify(b[bk])) {
         keyObject[bk] = true;
       }
     }
@@ -4257,7 +4265,6 @@ Math.uuid = function (len, radix) {
         });
       });
     } else {
-      //console.log('deleting local item', path);
       local.delete(path, true).then(promise.fulfill, promise.reject);
     }
   }
@@ -4268,15 +4275,6 @@ Math.uuid = function (len, radix) {
       remote.get(path, {
         ifNoneMatch: localRevision
       }).then(function(remoteStatus, remoteBody, remoteContentType, remoteRevision) {
-        //deal with folder descriptions from -02 spec:
-        var i, items={};
-        if(remoteBody && remoteBody['@context']=='http://remotestorage.io/spec/folder-description') {
-          for(i in remoteBody.items) {
-            items[i] = remoteBody.items[i].ETag;
-          }
-          remoteBody = items;
-        }
-
         if (remoteStatus === 401 || remoteStatus === 403) {
           throw new RemoteStorage.Unauthorized();
         } else if (remoteStatus === 412 || remoteStatus === 304) {
@@ -4293,15 +4291,16 @@ Math.uuid = function (len, radix) {
             if (remoteRevision && remoteRevision === localRevision) {
               promise.fulfill();
             } else {
-              local.setRevision(path, remoteRevision).then(function() {
-                descendInto(remote, local, path, allDifferentKeys(localBody, remoteBody), promise);
+              local.putDirectory(path, remoteBody, remoteRevision).then(function() {
+                // TODO Factor in  `cached` items of directory cache node
+                var differentObjects = allDifferentKeys(localBody, remoteBody);
+                descendInto(remote, local, path, differentObjects, promise);
               });
             }
           } else {
             updateLocal(remote, local, path, remoteBody, remoteContentType, remoteRevision, promise);
           }
         } else {
-          // do nothing.
           promise.fulfill();
         }
       }).then(undefined, promise.reject);
@@ -4644,11 +4643,11 @@ Math.uuid = function (len, radix) {
    *       is usually done by RemoteStorage.Sync.
    *
    *   The revision interface (also on RemoteStorage.IndexedDB object):
-   *     - #setRevision(path, revision) sets the current revision for the given
+   *     - #_setRevision(path, revision) sets the current revision for the given
    *       path. Revisions are only generated by the remotestorage server, so
-   *       this is usually done from RemoteStorage.Sync once a pending change
-   *       has been pushed out.
-   *     - #setRevisions(revisions) takes path/revision pairs in the form:
+   *       this is usually done from #put on an incoming change or from
+   *       #putDirectory.
+   *     - #_setRevisions(revisions) takes path/revision pairs in the form:
    *       [[path1, rev1], [path2, rev2], ...] and updates all revisions in a
    *       single transaction.
    *     - #getRevision(path) returns the currently stored revision for the given
@@ -4734,6 +4733,14 @@ Math.uuid = function (len, radix) {
     }
   }
 
+  function addDirectoryCacheNode(nodes, path, body) {
+    nodes.get(path).onsuccess = function(evt) {
+      var node = evt.target.result || makeNode(path);
+      node['body'] = body;
+      nodes.put(node);
+    };
+  }
+
   RS.IndexedDB = function(database) {
     this.db = database || DEFAULT_DB;
     if (! this.db) {
@@ -4785,16 +4792,7 @@ Math.uuid = function (len, radix) {
             contentType: contentType,
             body: body
           };
-          nodes.put(node).onsuccess = function() {
-            try {
-              addToParent(nodes, path, 'body', revision);
-            } catch(e) {
-              if (typeof(done) === 'undefined') {
-                done = true;
-                promise.reject(e);
-              }
-            }
-          };
+          nodes.put(node);
         } catch(e) {
           if (typeof(done) === 'undefined') {
             done = true;
@@ -4810,16 +4808,40 @@ Math.uuid = function (len, radix) {
           oldValue: oldNode ? oldNode.body : undefined,
           newValue: body
         });
-        if (! incoming) {
+        if (!incoming) {
           this._recordChange(path, { action: 'PUT', revision: oldNode ? oldNode.revision : undefined });
         }
         if (typeof(done) === 'undefined') {
           done = true;
-          promise.fulfill(200);
+          if (incoming) {
+            this._setRevision(path, revision).then(function(){
+              promise.fulfill(200);
+            });
+          } else {
+            promise.fulfill(200);
+          }
         }
       }.bind(this);
 
       transaction.onerror = transaction.onabort = promise.reject;
+
+      return promise;
+    },
+
+    putDirectory: function(path, body, revision) {
+      var promise = promising();
+      var transaction = this.db.transaction(['nodes'], 'readwrite');
+      var nodes = transaction.objectStore('nodes');
+
+      addDirectoryCacheNode(nodes, path, body);
+      addToParent(nodes, path, 'body');
+
+      transaction.oncomplete = function() {
+        this._setRevision(path, revision).then(promise.fulfill);
+      }.bind(this);
+
+      transaction.onerror = transaction.onabort = promise.reject;
+
       return promise;
     },
 
@@ -4833,7 +4855,7 @@ Math.uuid = function (len, radix) {
       nodes.get(path).onsuccess = function(evt) {
         oldNode = evt.target.result;
         nodes.delete(path).onsuccess = function() {
-          removeFromParent(nodes, path, 'body', incoming);
+          removeFromParent(nodes, path, 'cached', incoming);
         };
       };
 
@@ -4856,11 +4878,11 @@ Math.uuid = function (len, radix) {
       return promise;
     },
 
-    setRevision: function(path, revision) {
-      return this.setRevisions([[path, revision]]);
+    _setRevision: function(path, revision) {
+      return this._setRevisions([[path, revision]]);
     },
 
-    setRevisions: function(revs) {
+    _setRevisions: function(revs) {
       var promise = promising();
       var transaction = this.db.transaction(['nodes'], 'readwrite');
 
@@ -4903,6 +4925,7 @@ Math.uuid = function (len, radix) {
       return promise;
     },
 
+    // TODO this is not used yet
     getCached: function(path) {
       if (path[path.length - 1] !== '/') {
         return this.get(path);
@@ -5188,17 +5211,26 @@ Math.uuid = function (len, radix) {
         body: body
       };
       localStorage[NODES_PREFIX + path] = JSON.stringify(node);
-      this._addToParent(path, revision);
       this._emit('change', {
         path: path,
         origin: incoming ? 'remote' : 'window',
         oldValue: oldNode ? oldNode.body : undefined,
         newValue: body
       });
-      if (! incoming) {
+      if (incoming) {
+        this._setRevision(path, revision);
+      }
+      if (!incoming) {
         this._recordChange(path, { action: 'PUT' });
       }
       return promising().fulfill(200);
+    },
+
+    putDirectory: function(path, body, revision) {
+      this._addDirectoryCacheNode(path, body);
+      this._addToParent(path, 'body');
+      this._setRevision(path, revision);
+      return promising().fulfill();
     },
 
     get: function(path) {
@@ -5231,10 +5263,11 @@ Math.uuid = function (len, radix) {
       return promising().fulfill(200);
     },
 
-    setRevision: function(path, revision) {
+    _setRevision: function(path, revision) {
       var node = this._get(path) || makeNode(path);
       node.revision = revision;
       localStorage[NODES_PREFIX + path] = JSON.stringify(node);
+      this._addToParent(path, 'cached', revision);
       return promising().fulfill();
     },
 
@@ -5289,17 +5322,23 @@ Math.uuid = function (len, radix) {
       this._emit('conflict', event);
     },
 
-    _addToParent: function(path, revision) {
+    _addToParent: function(path, key, revision) {
       var parts = path.match(/^(.*\/)([^\/]+\/?)$/);
       if (parts) {
         var dirname = parts[1], basename = parts[2];
         var node = this._get(dirname) || makeNode(dirname);
-        node.body[basename] = revision || true;
+        node[key][basename] = revision || true;
         localStorage[NODES_PREFIX + dirname] = JSON.stringify(node);
         if (dirname !== '/') {
-          this._addToParent(dirname, true);
+          this._addToParent(dirname, key, true);
         }
       }
+    },
+
+    _addDirectoryCacheNode: function(path, body) {
+      var node = this._get(path) || makeNode(path);
+      node.body = body;
+      localStorage[NODES_PREFIX + path] = JSON.stringify(node);
     },
 
     _removeFromParent: function(path) {
@@ -5308,8 +5347,8 @@ Math.uuid = function (len, radix) {
         var dirname = parts[1], basename = parts[2];
         var node = this._get(dirname);
         if (node) {
-          delete node.body[basename];
-          if (Object.keys(node.body).length > 0) {
+          delete node.cached[basename];
+          if (Object.keys(node.cached).length > 0) {
             localStorage[NODES_PREFIX + dirname] = JSON.stringify(node);
           } else {
             delete localStorage[NODES_PREFIX + dirname];
@@ -5372,23 +5411,10 @@ Math.uuid = function (len, radix) {
     var node = { path: path };
     if (path[path.length - 1] === '/') {
       node.body = {};
+      node.cached = {};
       node.contentType = 'application/json';
     }
     return node;
-  }
-
-  function applyRecursive(path, cb) {
-    var parts = path.match(/^(.*\/)([^\/]+\/?)$/);
-    if (parts) {
-      var dirname = parts[1];
-      var basename = parts[2];
-
-      if (cb(dirname, basename) && dirname !== '/') {
-        applyRecursive(dirname, cb);
-      }
-    } else {
-      throw new Error('inMemoryStorage encountered invalid path : ' + path);
-    }
   }
 
   RemoteStorage.InMemoryStorage = function(rs) {
@@ -5409,7 +5435,7 @@ Math.uuid = function (len, radix) {
       }
     },
 
-    put: function(path, body, contentType, incoming) {
+    put: function(path, body, contentType, incoming, revision) {
       var oldNode = this._storage[path];
       var node = {
         path: path,
@@ -5417,10 +5443,6 @@ Math.uuid = function (len, radix) {
         body: body
       };
       this._storage[path] = node;
-      this._addToParent(path);
-      if (!incoming) {
-        this._recordChange(path, { action: 'PUT' });
-      }
 
       this._emit('change', {
         path: path,
@@ -5428,13 +5450,29 @@ Math.uuid = function (len, radix) {
         oldValue: oldNode ? oldNode.body : undefined,
         newValue: body
       });
+
+      if (incoming) {
+        this._setRevision(path, revision);
+      }
+      if (!incoming) {
+        this._recordChange(path, { action: 'PUT' });
+        // TODO why not set a revision?
+      }
+
       return promising().fulfill(200);
+    },
+
+    putDirectory: function(path, body, revision) {
+      this._addDirectoryCacheNode(path, body);
+      this._addToParent(path, 'body');
+      this._setRevision(path, revision);
+      return promising().fulfill();
     },
 
     'delete': function(path, incoming) {
       var oldNode = this._storage[path];
       delete this._storage[path];
-      this._removeFromParent(path);
+      this._removeFromParent(path, 'cached');
       if (!incoming) {
         this._recordChange(path, { action: 'DELETE' });
       }
@@ -5450,31 +5488,44 @@ Math.uuid = function (len, radix) {
       return promising().fulfill(200);
     },
 
-    _addToParent: function(path) {
-      var storage = this._storage;
-      applyRecursive(path, function(dirname, basename) {
+    _addToParent: function(path, key, revision) {
+      var parts = path.match(/^(.*\/)([^\/]+\/?)$/);
+      if (parts) {
+        var storage = this._storage;
+        var dirname = parts[1], basename = parts[2];
         var node = storage[dirname] || makeNode(dirname);
-        node.body[basename] = true;
+        node[key][basename] = revision || true;
         storage[dirname] = node;
-        return true;
-      });
+        if (dirname !== '/') {
+          this._addToParent(dirname, key, true);
+        }
+      }
+    },
+
+    _addDirectoryCacheNode: function(path, body) {
+      var storage = this._storage;
+      var node = storage[path] || makeNode(path);
+      node.body = body;
+      storage[path] = node;
+      return true;
     },
 
     _removeFromParent: function(path) {
-      var storage = this._storage;
-      var self = this;
-      applyRecursive(path, function(dirname, basename) {
+      var parts = path.match(/^(.*\/)([^\/]+\/?)$/);
+      if (parts) {
+        var storage = this._storage;
+        var dirname = parts[1], basename = parts[2];
         var node = storage[dirname];
         if (node) {
-          delete node.body[basename];
-          if (Object.keys(node.body).length === 0) {
+          delete node.cached[basename];
+          if (Object.keys(node.cached).length === 0) {
             delete storage[dirname];
-            return true;
-          } else {
-            self._addToParent(dirname);
+            if (dirname !== '/') {
+              this._removeFromParent(dirname);
+            }
           }
         }
-      });
+      }
     },
 
     _recordChange: function(path, attributes) {
@@ -5508,10 +5559,11 @@ Math.uuid = function (len, radix) {
       this._emit('conflict', event);
     },
 
-    setRevision: function(path, revision) {
+    _setRevision: function(path, revision) {
       var node = this._storage[path] || makeNode(path);
       node.revision = revision;
       this._storage[path] = node;
+      this._addToParent(path, 'cached', revision);
       return promising().fulfill();
     },
 
@@ -6240,7 +6292,12 @@ Math.uuid = function (len, radix) {
         // id is not cached (or file doesn't exist).
         // load parent directory listing to propagate / update id cache.
         this._getDir(parentPath(path)).then(function() {
-          callback(null, this._fileIdCache.get(path));
+          var id = this._fileIdCache.get(path);
+          if (!id) {
+            callback('no file or directory found at the path: ' + path, null);
+            return;
+          }
+          callback(null, id);
         }.bind(this), callback);
       }
     },
