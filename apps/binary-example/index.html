@@ -1,0 +1,63 @@
+<!DOCTYPE>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>remotestorage.js Example App with Binary Data</title>
+  </head>
+  <body>
+    <p>
+      Please connect your remote storage.
+    </p>
+    Your image:
+
+<!-- code from http://www.html5rocks.com/en/tutorials/file/dndfiles/ start: -->
+	<input type="file" id="files" name="files[]" multiple />
+	<output id="list"></output>
+
+	<script>
+	  function handleFileSelect(evt) {
+	    var files = evt.target.files; // FileList object
+
+	    // files is a FileList of File objects. List some properties.
+	    var output = [];
+	    for (var i = 0, f; f = files[i]; i++) {
+	      output.push('<li><strong>', escape(f.name), '</strong> (', f.type || 'n/a', ') - ',
+			  f.size, ' bytes, last modified: ',
+			  f.lastModifiedDate ? f.lastModifiedDate.toLocaleDateString() : 'n/a',
+			  '</li>');
+	    }
+	    document.getElementById('list').innerHTML = '<ul>' + output.join('') + '</ul>';
+	  }
+
+	  document.getElementById('files').addEventListener('change', handleFileSelect, false);
+	</script>
+<!-- code from http://www.html5rocks.com/en/tutorials/file/dndfiles/ end. -->
+
+    <img id="current" />
+  </body>
+  <script src="remotestorage.js"></script>
+  <script src="notes.js"></script>
+  <script>
+    function $(id) { return document.getElementById(id); }
+
+    function displayNote() {
+      remoteStorage.notes.getNote().then(function(text) {
+          $('current').innerHTML = text ? 'Hello '+text : '';
+      });
+    }
+
+    remoteStorage.access.claim('notes', 'rw');
+    remoteStorage.displayWidget();
+    remoteStorage.notes.onChange(displayNote);
+    $('save').onclick = function() {
+      remoteStorage.notes.setNote($('text').value);
+    };
+    $('text').addEventListener('keypress', function(e) {
+      if(e.keyCode == 13) {//<enter>
+        $('save').onclick();
+      }
+    }, false);
+
+    displayNote();
+  </script>
+</html>
