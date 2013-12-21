@@ -39,6 +39,8 @@
       // Closure to capture the file information.
       reader.onload = (function(theFile) {
         return function(e) {
+          document.outData = new Uint8Array(e.target.result);
+          document.outType = theFile.type;
           remoteStorage.notes.setImage(e.target.result, theFile.type);
         };
       })(f);
@@ -61,6 +63,8 @@
 
     function displayImage() {
       remoteStorage.notes.getImage().then(function(result) {
+          document.inData = new Uint8Array(result.data);
+          document.inType = result.mimeType;
 <!-- code from http://remotestorage.io/doc/code/files/baseclient-js.html#RemoteStorage.BaseClient.getFile start: -->
         var blob = new Blob([result.data], { type: result.mimeType });
         $('current').src = window.URL.createObjectURL(blob);
