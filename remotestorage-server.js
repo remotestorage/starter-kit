@@ -88,13 +88,21 @@ exports.createServer = function(tokenStore, dataStore) {
   }
   function give404(res, origin) {
     log('404');
-    writeHead(res, 404, origin);
+    computerSaysNo(res, origin, 404);
     res.end();
   }
   function computerSaysNo(res, origin, status, timestamp) {
     log('COMPUTER_SAYS_NO - '+status);
-    writeHead(res, status, origin, timestamp);
-    res.end();
+    var errorMsg = {
+      304: '304 Not Modified',
+      401: '401 Unauthorized',
+      404: '404 Not Found'
+    };
+    if(!errorMsg[status]) {
+      errorMsg[status] = status + ' Computer says no';
+    }
+    writeHead(res, status, origin, timestamp, 'text/plain', errorMsg[status].length);
+    res.end(errorMsg[status]);
   }
   function getVersion(path) {
     if(dataStore.get('version:'+path)) {
