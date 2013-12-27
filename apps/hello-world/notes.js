@@ -1,17 +1,25 @@
 RemoteStorage.defineModule('notes', function(privateClient, publicClient) {
   privateClient.cache('');
+  var note, cb;
+  privateClient.on('change', function(e) {
+    console.log('change coming from '+e.origin);
+    if(e.relativePath=='note.txt') {
+      note = e.newValue;
+      if(cb) {
+        cb(e);
+      }
+    }
+  });
   return {
     exports: {
       setNote: function (text) {
-        return privateClient.storeFile('text/plain', 'note.txt', text);
+        privateClient.storeFile('text/plain', 'note.txt', text);
       },
       getNote: function () {
-        return privateClient.getFile('note.txt').then(function(obj) {
-          return obj.data;
-        });
+        return note;
       },
-      onChange: function (cb) {
-        privateClient.on('change', cb);
+      onChange: function (setCb) {
+        cb = setCb;
       }
     }
   };
