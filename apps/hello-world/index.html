@@ -18,23 +18,22 @@
     function $(id) { return document.getElementById(id); }
 
     function displayNote() {
-      remoteStorage.notes.getNote().then(function(text) {
-          $('current').innerHTML = text ? 'Hello '+text : '';
-      });
+      var text = remoteStorage.notes.getNote();
+      $('current').innerHTML = text ? 'Hello '+text : '';    
     }
 
     remoteStorage.access.claim('notes', 'rw');
     remoteStorage.displayWidget();
     remoteStorage.notes.onChange(displayNote);
+
     $('save').onclick = function() {
       remoteStorage.notes.setNote($('text').value);
     };
+
     $('text').addEventListener('keypress', function(e) {
       if(e.keyCode == 13) {//<enter>
         $('save').onclick();
       }
     }, false);
-
-    displayNote();
   </script>
 </html>
