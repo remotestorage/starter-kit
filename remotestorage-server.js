@@ -133,7 +133,11 @@ exports.createServer = function(tokenStore, dataStore) {
   function toJsonLd(revisions) {
     var items = {};
     for(var i in revisions) {
-      items[i] = { ETag: revisions[i] };
+      items[i] = { ETag: revisions[i].toString() };
+      if (i.substr(-1) !== '/') {
+        items[i]['Content-Type'] = dataStore.get('contentType:'+path);
+        items[i]['Content-Length'] = dataStore.get('content:'+path).length;
+      };
     }
     return {
       '@context': 'http://remotestorage.io/spec/folder-description',
