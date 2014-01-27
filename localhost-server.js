@@ -148,7 +148,7 @@ exports.createInstance = function(kv, config) {
     });
   }
 
-  var storage = require('./remotestorage-server').createServer(tokenStore, dataStore);
+  var storage = require('remotestorage-server').createServer(tokenStore, dataStore);
   
   return {
     portal: portal,

@@ -10,8 +10,7 @@
   },
   "homepage": "http://remotestorage.io",
   "dependencies": {
-    "url": "0.7.x",
-    "crypto": "0.0.x",
-    "node-static": "0.7.x"
+    "node-static": "0.7.x",
+    "remotestorage-server": "0.1.2-pre"
   }
 }
