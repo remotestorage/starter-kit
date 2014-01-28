@@ -26,13 +26,13 @@
     remoteStorage.displayWidget();
     remoteStorage.notes.onChange(displayNote);
 
-    $('save').onclick = function() {
+    $('save').onmousedown = function() {
       remoteStorage.notes.setNote($('text').value);
     };
 
-    $('text').addEventListener('keypress', function(e) {
+    $('text').addEventListener('keydown', function(e) {
       if(e.keyCode == 13) {//<enter>
-        $('save').onclick();
+        $('save').onmousedown();
       }
     }, false);
   </script>
