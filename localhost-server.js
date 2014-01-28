@@ -13,8 +13,6 @@ exports.createInstance = function(kv, config) {
   };
 
   var remotestorageServer = require('remotestorage-server').createServer('draft-dejong-remotestorage-02', tokenStore, dataStore);
-  
-
 
   function log(str) {
     console.log(str);
@@ -129,8 +127,6 @@ exports.createInstance = function(kv, config) {
     });
   }
 
-  var storage = remoteS.storage('draft-dejong-remotestorage-02', tokenStore, dataStore);
-  
   return {
     portal: portal,
     webfinger: webfinger,
