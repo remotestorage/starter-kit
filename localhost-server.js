@@ -12,19 +12,9 @@ exports.createInstance = function(kv, config) {
     set: function(k, v) { return kv.set('data:'+k, v); }
   };
 
-  function makeScopePaths(userName, scopes) {
-    var scopePaths=[];
-    for(var i=0; i<scopes.length; i++) {
-      var thisScopeParts = scopes[i].split(':');
-      if(thisScopeParts[0]=='*') {
-        scopePaths.push(userName+'/:'+thisScopeParts[1]);
-      } else {
-        scopePaths.push(userName+'/'+thisScopeParts[0]+'/:'+thisScopeParts[1]);
-        scopePaths.push(userName+'/public/'+thisScopeParts[0]+'/:'+thisScopeParts[1]);
-      }
-    }
-    return scopePaths;
-  }
+  var remotestorageServer = require('remotestorage-server').createServer('draft-dejong-remotestorage-02', tokenStore, dataStore);
+  
+
 
   function log(str) {
     console.log(str);
@@ -33,7 +23,7 @@ exports.createInstance = function(kv, config) {
   function createToken(userName, scopes, cb) {
     crypto.randomBytes(48, function(ex, buf) {
       var token = buf.toString('hex');
-      var scopePaths = makeScopePaths(userName, scopes);
+      var scopePaths = remotestorageServer.makeScopePaths(userName, scopes);
       log('createToken ',userName,scopes);
       log('adding ',scopePaths,' for',token);
       tokenStore.set(token, scopePaths);
@@ -123,16 +113,7 @@ exports.createInstance = function(kv, config) {
       userName = userAddress.split('@')[0];
     }
     writeJson(res, {
-      links:[{
-        href: 'http://'+config.host+':'+config.storagePort+'/storage/'+userName,
-        rel: "remotestorage",
-        properties: {
-          'http://remotestorage.io/spec/version': 'draft-dejong-remotestorage-02',
-          'http://tools.ietf.org/html/rfc6749#section-4.2': 'http://'+config.host+'/auth/'+userName,
-          'http://tools.ietf.org/html/rfc6750#section-2.3': false,
-          'http://tools.ietf.org/html/rfc2616#section-14.16': false
-        }
-      }]
+      links:[ remotestorageServer.getWebfingerLink('http', config.host, config.storagePort, userName, 'http://'+config.host+'/auth/'+userName) ]
     });
   }
   function oauth(req, res) {
@@ -148,12 +129,12 @@ exports.createInstance = function(kv, config) {
     });
   }
 
-  var storage = require('remotestorage-server').createServer(tokenStore, dataStore);
+  var storage = remoteS.storage('draft-dejong-remotestorage-02', tokenStore, dataStore);
   
   return {
     portal: portal,
     webfinger: webfinger,
     oauth: oauth,
-    storage: storage
+    storage: remotestorageServer.storage
   };
 };
