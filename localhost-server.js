@@ -128,8 +128,6 @@ exports.createInstance = function(kv, config) {
       writeHtml(res, '<a href="'+toHtml(redirectUri)+'#access_token='+toHtml(token)+'">Allow</a>');
     });
   }
-
-  var storage = remoteS.storage('draft-dejong-remotestorage-02', tokenStore, dataStore);
   
   return {
     portal: portal,
