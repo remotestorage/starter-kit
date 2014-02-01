@@ -31,8 +31,8 @@ function setApps(listing) {
 var kv = (function() {
   var store = {};
   return {
-    set: function(k, v) { store[k] = v; },
-    get: function(k) { return store[k]; }
+    set: function(k, v, cb) { store[k] = v; cb(); },
+    get: function(k, cb) { cb(store[k]); }
   };
  })();
 
