@@ -7,7 +7,8 @@ var config = {
   defaultUserName: 'me',
   host: 'localhost',
   storagePort: 8000,
-  firstAppPort: 8001,
+  portalPort: 8001,
+  firstAppPort: 8002,
   apps: {}
 };
 
@@ -71,9 +72,10 @@ function launch() {
     } else {
       setApps(listing);
       server = require('./localhost-server').createInstance(kv, config);
-      http.createServer(serveMain).listen(80);
+      http.createServer(serveMain).listen(config.portalPort);
       http.createServer(serveStorage).listen(config.storagePort);
-      console.log('See http://' + config.host + '/');
+      console.log('See http://' + config.host + ':' + config.portalPort + '/'
+          + ' or visit a remoteStorage.js 0.10+ app and connect with me@localhost:'+ config.portalPort + ' (special backdoor!)');
     }
   });
 }
