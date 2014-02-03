@@ -11,6 +11,6 @@
   "homepage": "http://remotestorage.io",
   "dependencies": {
     "node-static": "0.7.x",
-    "remotestorage-server": "0.1.4-pre"
+    "remotestorage-server": "0.1.8"
   }
 }

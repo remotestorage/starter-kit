@@ -1,0 +1,78 @@
+<!DOCTYPE>
+:<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Minimal remoteStorage.js Example App</title>
+  </head>
+  <body>
+    <p>
+      Please connect your remote storage.
+    </p>
+    Your name: <input id="text" />
+    <input id="save" type="submit" value="save" />
+    <div id="current"></div>
+  </body>
+
+  <!-- core -->
+  <script src="../../../remotestorage.js/lib/promising.js"></script>
+  <script src="../../../remotestorage.js/src/remotestorage.js"></script>
+  <script src="../../../remotestorage.js/src/eventhandling.js"></script>
+  <script src="../../../remotestorage.js/src/wireclient.js"></script>
+  <script src="../../../remotestorage.js/src/discover.js"></script>
+  <script src="../../../remotestorage.js/src/authorize.js"></script>
+  <script src="../../../remotestorage.js/src/access.js"></script>
+  <script src="../../../remotestorage.js/src/env.js"></script>
+
+  <!-- widget -->
+  <script src="../../../remotestorage.js/src/i18n.js"></script>
+  <script src="../../../remotestorage.js/src/assets.js"></script>
+  <script src="../../../remotestorage.js/src/widget.js"></script>
+  <script src="../../../remotestorage.js/src/view.js"></script>
+  
+  <!-- baseclient -->
+  <script src="../../../remotestorage.js/lib/tv4.js"></script>
+  <script src="../../../remotestorage.js/lib/Math.uuid.js"></script>
+  <script src="../../../remotestorage.js/src/baseclient.js"></script>
+  <script src="../../../remotestorage.js/src/baseclient/types.js"></script>
+
+  <!-- caching -->
+  <script src="../../../remotestorage.js/src/caching.js"></script>
+  <script src="../../../remotestorage.js/src/sync.js"></script>
+  <script src="../../../remotestorage.js/src/cachinglayer.js"></script>
+  <script src="../../../remotestorage.js/src/indexeddb.js"></script>
+  <script src="../../../remotestorage.js/src/localstorage.js"></script>
+  <script src="../../../remotestorage.js/src/inmemorystorage.js"></script>
+
+  <!-- the rest: -->
+  <script src="../../../remotestorage.js/src/modules.js"></script>
+  <script src="../../../remotestorage.js/src/debug/inspect.js"></script>
+  <script src="../../../remotestorage.js/src/legacy.js"></script>
+  <script src="../../../remotestorage.js/src/googledrive.js"></script>
+  <script src="../../../remotestorage.js/src/dropbox.js"></script>
+  <script>remoteStorage = new RemoteStorage();</script>
+
+
+  <script src="notes.js"></script>
+  <script>
+    function $(id) { return document.getElementById(id); }
+
+    function displayNote() {
+      var text = remoteStorage.notes.getNote();
+      $('current').innerHTML = text ? 'Hello '+text : '';    
+    }
+
+    remoteStorage.access.claim('notes', 'rw');
+    remoteStorage.displayWidget();
+    remoteStorage.notes.onChange(displayNote);
+
+    $('save').onmousedown = function() {
+      remoteStorage.notes.setNote($('text').value);
+    };
+
+    $('text').addEventListener('keydown', function(e) {
+      if(e.keyCode == 13) {//<enter>
+        $('save').onmousedown();
+      }
+    }, false);
+  </script>
+</html>

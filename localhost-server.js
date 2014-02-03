@@ -4,17 +4,15 @@ var fs = require('fs'),
 
 exports.createInstance = function(kv, config) {
   var tokenStore = {
-    get: function(k) { return kv.get('token:'+k); },
-    set: function(k, v) { return kv.set('token:'+k, v); }
+    get: function(k, cb) { return kv.get('token:'+k, cb); },
+    set: function(k, v, cb) { return kv.set('token:'+k, v, cb); }
   };
   var dataStore = {
-    get: function(k) { return kv.get('data:'+k); },
-    set: function(k, v) { return kv.set('data:'+k, v); }
+    get: function(k, cb) { return kv.get('data:'+k, cb); },
+    set: function(k, v, cb) { return kv.set('data:'+k, v, cb); }
   };
 
   var remotestorageServer = require('remotestorage-server').createServer('draft-dejong-remotestorage-02', tokenStore, dataStore);
-  
-
 
   function log(str) {
     console.log(str);
@@ -128,7 +126,7 @@ exports.createInstance = function(kv, config) {
       writeHtml(res, '<a href="'+toHtml(redirectUri)+'#access_token='+toHtml(token)+'">Allow</a>');
     });
   }
-  
+
   return {
     portal: portal,
     webfinger: webfinger,
