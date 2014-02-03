@@ -1,4 +1,4 @@
-/** remotestorage.js 0.9.0, http://remotestorage.io, MIT-licensed **/
+/** remotestorage.js 0.9.1-pre, http://remotestorage.io, MIT-licensed **/
 
 /** FILE: lib/promising.js **/
 (function(global) {
@@ -137,12 +137,10 @@
   }
 
   var SyncedGetPutDelete = {
-    get: function(path) {
+    get: function(path, maxAge) {
       var self = this;
-      if (this.caching.cachePath(path)) {
-        return this.caching.waitForPath(path).then(function() {
-          return self.local.get(path);
-        });
+      if (this.local) {
+        return this.local.get(path, maxAge);
       } else {
         return this.remote.get(path);
       }
@@ -150,10 +148,9 @@
 
     put: function(path, body, contentType) {
       if (shareFirst.bind(this)(path)) {
-        //this.local.put(path, body, contentType);
         return SyncedGetPutDelete._wrapBusyDone.call(this, this.remote.put(path, body, contentType));
       }
-      else if (this.caching.cachePath(path)) {
+      else if (this.local) {
         return this.local.put(path, body, contentType);
       } else {
         return SyncedGetPutDelete._wrapBusyDone.call(this, this.remote.put(path, body, contentType));
@@ -161,7 +158,7 @@
     },
 
     'delete': function(path) {
-      if (this.caching.cachePath(path)) {
+      if (this.local) {
         return this.local.delete(path);
       } else {
         return SyncedGetPutDelete._wrapBusyDone.call(this, this.remote.delete(path));
@@ -169,12 +166,14 @@
     },
 
     _wrapBusyDone: function(result) {
-      this._emit('sync-busy');
+      var self = this;
+      this._emit('wire-busy');
       return result.then(function() {
         var promise = promising();
-        this._emit('sync-done');
+        self._emit('wire-done', { success: true });
         return promise.fulfill.apply(promise, arguments);
-      }.bind(this), function(err) {
+      }, function(err) {
+        self._emit('wire-done', { success: false });
         throw err;
       });
     }
@@ -205,18 +204,12 @@
     /**
      * Event: disconnect
      *
-     * depricated use disconnected
-     **/
-    /**
-     * Event: conflict
-     *
-     * fired when a conflict occures
-     * TODO: arguments, how does this work
+     * deprecated use disconnected
      **/
     /**
      * Event: error
      *
-     * fired when an error occures
+     * fired when an error occurs
      *
      * Arguments:
      * the error
@@ -229,7 +222,7 @@
     /**
      * Event: connecting
      *
-     * fired before webfinger lookpu
+     * fired before webfinger lookup
      **/
     /**
      * Event: authing
@@ -237,21 +230,21 @@
      * fired before redirecting to the authing server
      **/
     /**
-     * Event: sync-busy
+     * Event: wire-busy
      *
-     * fired when a sync cycle starts
+     * fired when a wire request starts
      *
      **/
     /**
-     * Event: sync-done
+     * Event: wire-done
      *
-     * fired when a sync cycle completes
+     * fired when a wire request completes
      *
      **/
 
     RemoteStorage.eventHandling(
-      this, 'ready', 'disconnected', 'disconnect', 'conflict', 'error',
-      'features-loaded', 'connecting', 'authing', 'sync-busy', 'sync-done'
+      this, 'ready', 'disconnected', 'disconnect', 'error',
+      'features-loaded', 'connecting', 'authing', 'wire-busy', 'wire-done'
     );
 
     // pending get/put/delete calls.
@@ -265,7 +258,7 @@
 
     this._cleanups = [];
 
-    this._pathHandlers = { change: {}, conflict: {} };
+    this._pathHandlers = { change: {} };
 
     this.apiKeys = {};
 
@@ -318,6 +311,7 @@
       console.log.apply(console, arguments);
     }
   };
+
 
   RemoteStorage.prototype = {
     /**
@@ -441,21 +435,6 @@
       this._pathHandlers.change[path].push(handler);
     },
 
-    onConflict: function(path, handler) {
-      if (! this._conflictBound) {
-        this.on('features-loaded', function() {
-          if (this.local) {
-            this.local.on('conflict', this._dispatchEvent.bind(this, 'conflict'));
-          }
-        }.bind(this));
-        this._conflictBound = true;
-      }
-      if (! this._pathHandlers.conflict[path]) {
-        this._pathHandlers.conflict[path] = [];
-      }
-      this._pathHandlers.conflict[path].push(handler);
-    },
-
     /**
      * Method: enableLog
      *
@@ -499,8 +478,19 @@
      **/
 
     _init: function() {
+      var self = this, readyFired = false;
+      function fireReady() {
+        try {
+          if (!readyFired) {
+            self._emit('ready');
+            readyFired = true;
+          }
+        } catch(e) {
+          console.error("'ready' failed: ", e, e.stack);
+          self._emit('error', e);
+        }
+      }
       this._loadFeatures(function(features) {
-        var readyFired = false;
         this.log('all features loaded');
         this.local = features.local && new features.local();
         // (this.remote set by WireClient._rs_init
@@ -514,27 +504,10 @@
         }
 
         if (this.remote) {
-          this.remote.on('connected', function() {
-            try {
-              if(!readyFired) {
-                this._emit('ready');
-                readyFired = true;
-              }
-            } catch(e) {
-              console.error("'ready' failed: ", e, e.stack);
-              this._emit('error', e);
-            }
-          }.bind(this));
+          this.remote.on('connected', fireReady);
+          this.remote.on('not-connected', fireReady);
           if (this.remote.connected) {
-            try {
-              if(!readyFired) {
-                this._emit('ready');
-                readyFired = true;
-              }
-            } catch(e) {
-              console.error("'ready' failed: ", e, e.stack);
-              this._emit('error', e);
-            }
+            fireReady();
           }
         }
 
@@ -630,7 +603,7 @@
       function featureSupportedCb(name) {
         return function(success) {
           self.log("[FEATURE "+name+"]" + success ? "":" not"+" supported");
-          if(!success) {
+          if (!success) {
             featureDone();
           }
         };
@@ -719,13 +692,13 @@
     },
 
     _dispatchEvent: function(eventName, event) {
-      for(var path in this._pathHandlers[eventName]) {
+      for (var path in this._pathHandlers[eventName]) {
         var pl = path.length;
         var self = this;
         this._pathHandlers[eventName][path].forEach(function(handler) {
           if (event.path.substr(0, pl) === path) {
             var ev = {};
-            for(var key in event) { ev[key] = event[key]; }
+            for (var key in event) { ev[key] = event[key]; }
             ev.relativePath = event.path.replace(new RegExp('^' + path), '');
             try {
               handler(ev);
@@ -825,8 +798,8 @@
     removeEventListener: function(eventName, handler) {
       this._validateEvent(eventName);
       var hl = this._handlers[eventName].length;
-      for(var i=0;i<hl;i++) {
-        if(this._handlers[eventName][i] === handler) {
+      for (var i=0;i<hl;i++) {
+        if (this._handlers[eventName][i] === handler) {
           this._handlers[eventName].splice(i, 1);
           return;
         }
@@ -842,7 +815,7 @@
     },
 
     _validateEvent: function(eventName) {
-      if(! (eventName in this._handlers)) {
+      if (! (eventName in this._handlers)) {
         throw new Error("Unknown event: " + eventName);
       }
     },
@@ -892,7 +865,7 @@
    */
   RemoteStorage.eventHandling = function(object) {
     var eventNames = Array.prototype.slice.call(arguments, 1);
-    for(var key in methods) {
+    for (var key in methods) {
       object[key] = methods[key];
     }
     object._handlers = {};
@@ -938,9 +911,9 @@
    *
    * In addition to this, the WireClient has some compatibility features to work with
    * remotestorage 2012.04 compatible storages. For example it will cache revisions
-   * from directory listings in-memory and return them accordingly as the "revision"
+   * from folder listings in-memory and return them accordingly as the "revision"
    * parameter in response to #get() requests. Similarly it will return 404 when it
-   * receives an empty directory listing, to mimic remotestorage-01 behavior. Note
+   * receives an empty folder listing, to mimic remotestorage-01 behavior. Note
    * that it is not always possible to know the revision beforehand, hence it may
    * be undefined at times (especially for caching-roots).
    */
@@ -967,7 +940,7 @@
       Int32Array, Uint32Array, Float32Array, Float64Array
     ];
     isArrayBufferView = function(object) {
-      for(var i=0;i<8;i++) {
+      for (var i=0;i<8;i++) {
         if (object instanceof arrayBufferViews[i]) {
           return true;
         }
@@ -976,54 +949,23 @@
     };
   }
 
-  function request(method, uri, token, headers, body, getEtag, fakeRevision) {
-    if ((method === 'PUT' || method === 'DELETE') && uri[uri.length - 1] === '/') {
-      throw "Don't " + method + " on directories!";
+  function addQuotes(str) {
+    if (typeof(str) !== 'string') {
+      return str;
+    }
+    if (str === '*') {
+      return '*';
     }
 
-    var promise = promising();
-    var revision;
+    return '"' + str + '"';
+  }
 
-    headers['Authorization'] = 'Bearer ' + token;
+  function stripQuotes(str) {
+    if (typeof(str) !== 'string') {
+      return str;
+    }
 
-    RS.WireClient.request(method, uri, {
-      body: body,
-      headers: headers
-    }, function(error, response) {
-      if (error) {
-        promise.reject(error);
-      } else {
-        if ([401, 403, 404, 412].indexOf(response.status) >= 0) {
-          promise.fulfill(response.status);
-        } else if ([201, 204, 304].indexOf(response.status) >= 0 ||
-                   (response.status === 200 && method !== 'GET')) {
-          revision = response.getResponseHeader('ETag');
-          promise.fulfill(response.status, undefined, undefined, revision);
-        } else {
-          var mimeType = response.getResponseHeader('Content-Type');
-          var body;
-          if (getEtag) {
-            revision = response.getResponseHeader('ETag');
-          } else {
-            revision = response.status === 200 ? fakeRevision : undefined;
-          }
-
-          if ((! mimeType) || mimeType.match(/charset=binary/)) {
-            RS.WireClient.readBinaryData(response.response, mimeType, function(result) {
-              promise.fulfill(response.status, result, mimeType, revision);
-            });
-          } else {
-            if (mimeType && mimeType.match(/^application\/json/)) {
-              body = JSON.parse(response.responseText);
-            } else {
-              body = response.responseText;
-            }
-            promise.fulfill(response.status, body, mimeType, revision);
-          }
-        }
-      }
-    });
-    return promise;
+    return str.replace(/^["']|["']$/g, '');
   }
 
   function readBinaryData(content, mimeType, callback) {
@@ -1039,13 +981,21 @@
     return path.replace(/\/+/g, '/').split('/').map(encodeURIComponent).join('/');
   }
 
-  function isDir(path) {
+  function isFolder(path) {
     return (path.substr(-1) === '/');
   }
 
   function isFolderDescription(body) {
     return ((body['@context'] === 'http://remotestorage.io/spec/folder-description')
              && (typeof(body['items']) === 'object'));
+  }
+
+  function isSuccessStatus(status) {
+    return [201, 204, 304].indexOf(status) >= 0;
+  }
+
+  function isErrorStatus(status) {
+    return [401, 403, 404, 412].indexOf(status) >= 0;
   }
 
   var onErrorCb;
@@ -1055,6 +1005,7 @@
    **/
   RS.WireClient = function(rs) {
     this.connected = false;
+
     /**
      * Event: change
      *   never fired for some reason
@@ -1063,10 +1014,10 @@
      *   fired when the wireclient connect method realizes that it is
      *   in posession of a token and a href
      **/
-    RS.eventHandling(this, 'change', 'connected');
+    RS.eventHandling(this, 'change', 'connected', 'wire-busy', 'wire-done', 'not-connected');
 
     onErrorCb = function(error){
-      if(error instanceof RemoteStorage.Unauthorized) {
+      if (error instanceof RemoteStorage.Unauthorized) {
         this.configure(undefined, undefined, undefined, null);
       }
     }.bind(this);
@@ -1127,6 +1078,84 @@
      *   // -> 'draft-dejong-remotestorage-01'
      */
 
+    _request: function(method, uri, token, headers, body, getEtag, fakeRevision) {
+      if ((method === 'PUT' || method === 'DELETE') && uri[uri.length - 1] === '/') {
+        throw "Don't " + method + " on directories!";
+      }
+
+      var promise = promising();
+      var revision;
+      var reqType;
+      var self = this;
+
+      headers['Authorization'] = 'Bearer ' + token;
+
+      this._emit('wire-busy', {
+        method: method,
+        isFolder: isFolder(uri)
+      });
+
+      RS.WireClient.request(method, uri, {
+        body: body,
+        headers: headers
+      }, function(error, response) {
+        if (error) {
+          self._emit('wire-done', {
+            method: method,
+            isFolder: isFolder(uri),
+            success: false
+          });
+          self.online = false;
+          promise.reject(error);
+        } else {
+          self._emit('wire-done', {
+            method: method,
+            isFolder: isFolder(uri),
+            success: true
+          });
+          self.online = true;
+          if (isErrorStatus(response.status)) {
+            console.log('239 revision', response.status);
+            if (getEtag) {
+              revision = stripQuotes(response.getResponseHeader('ETag'));
+            } else {
+              revision = response.status === 200 ? fakeRevision : undefined;
+            }
+            promise.fulfill(response.status, undefined, undefined, revision);
+          } else if (isSuccessStatus(response.status) ||
+                     (response.status === 200 && method !== 'GET')) {
+            revision = stripQuotes(response.getResponseHeader('ETag'));
+            console.log('242 revision', revision);
+            promise.fulfill(response.status, undefined, undefined, revision);
+          } else {
+            var mimeType = response.getResponseHeader('Content-Type');
+            var body;
+            if (getEtag) {
+              revision = stripQuotes(response.getResponseHeader('ETag'));
+            } else {
+              revision = response.status === 200 ? fakeRevision : undefined;
+            }
+
+            if ((! mimeType) || mimeType.match(/charset=binary/)) {
+              RS.WireClient.readBinaryData(response.response, mimeType, function(result) {
+              console.log('255 revision', revision);
+              promise.fulfill(response.status, result, mimeType, revision);
+              });
+            } else {
+              if (mimeType && mimeType.match(/^application\/json/)) {
+                body = JSON.parse(response.responseText);
+              } else {
+                body = response.responseText;
+              }
+              console.log('264 revision', revision);
+              promise.fulfill(response.status, body, mimeType, revision);
+            }
+          }
+        }
+      });
+      return promise;
+    },
+
     configure: function(userAddress, href, storageApi, token) {
       if (typeof(userAddress) !== 'undefined') {
         this.userAddress = userAddress;
@@ -1146,6 +1175,7 @@
       }
       if (this.href && this.token) {
         this.connected = true;
+        this.online = true;
         this._emit('connected');
       } else {
         this.connected = false;
@@ -1163,6 +1193,12 @@
       }.bind(this));
     },
 
+    stopWaitingForToken: function() {
+      if (!this.connected) {
+        this._emit('not-connected');
+      }
+    },
+
     get: function(path, options) {
       if (!this.connected) {
         throw new Error("not connected (path: " + path + ")");
@@ -1171,22 +1207,20 @@
       var headers = {};
       if (this.supportsRevs) {
         if (options.ifNoneMatch) {
-          headers['If-None-Match'] = options.ifNoneMatch;
+          headers['If-None-Match'] = addQuotes(options.ifNoneMatch);
         }
       } else if (options.ifNoneMatch) {
         var oldRev = this._revisionCache[path];
       }
-      var promise = request('GET', this.href + cleanPath(path), this.token, headers,
+      var promise = this._request('GET', this.href + cleanPath(path), this.token, headers,
                             undefined, this.supportsRevs, this._revisionCache[path]);
-      if (!isDir(path)) {
-        return promise;
-      } else {
+      if (isFolder(path)) {
         return promise.then(function(status, body, contentType, revision) {
-          var listing = {};
+          var itemsMap = {};
 
-          // New directory listing received
+          // New folder listing received
           if (status === 200 && typeof(body) === 'object') {
-            // Empty directory listing of any spec
+            // Empty folder listing of any spec
             if (Object.keys(body).length === 0) {
               status = 404;
             }
@@ -1195,27 +1229,22 @@
               for (var item in body.items) {
                 this._revisionCache[path + item] = body.items[item].ETag;
               }
-              listing = body.items;
+              itemsMap = body.items;
             }
             // < 02 spec
             else {
               Object.keys(body).forEach(function(key){
                 this._revisionCache[path + key] = body[key];
-                listing[key] = {"ETag": body[key]};
+                itemsMap[key] = {"ETag": body[key]};
               }.bind(this));
             }
-            return promising().fulfill(status, listing, contentType, revision);
-          }
-          // Cached directory listing received
-          else if (status === 304) {
+            return promising().fulfill(status, itemsMap, contentType, revision);
+          } else {
             return promising().fulfill(status, body, contentType, revision);
           }
-          // Faulty directory listing received
-          else {
-            var error = new Error("Received faulty directory response for: "+path);
-            return promising().reject(error);
-          }
         }.bind(this));
+      } else {
+        return promise;
       }
     },
 
@@ -1230,13 +1259,13 @@
       var headers = { 'Content-Type': contentType };
       if (this.supportsRevs) {
         if (options.ifMatch) {
-          headers['If-Match'] = options.ifMatch;
+          headers['If-Match'] = addQuotes(options.ifMatch);
         }
         if (options.ifNoneMatch) {
-          headers['If-None-Match'] = options.ifNoneMatch;
+          headers['If-None-Match'] = addQuotes(options.ifNoneMatch);
         }
       }
-      return request('PUT', this.href + cleanPath(path), this.token,
+      return this._request('PUT', this.href + cleanPath(path), this.token,
                      headers, body, this.supportsRevs);
     },
 
@@ -1248,10 +1277,10 @@
       var headers = {};
       if (this.supportsRevs) {
         if (options.ifMatch) {
-          headers['If-Match'] = options.ifMatch;
+          headers['If-Match'] = addQuotes(options.ifMatch);
         }
       }
-      return request('DELETE', this.href + cleanPath(path), this.token,
+      return this._request('DELETE', this.href + cleanPath(path), this.token,
                      headers,
                      undefined, this.supportsRevs);
     }
@@ -1285,7 +1314,7 @@
       xhr.responseType = options.responseType;
     }
     if (options.headers) {
-      for(var key in options.headers) {
+      for (var key in options.headers) {
         xhr.setRequestHeader(key, options.headers[key]);
       }
     }
@@ -1332,6 +1361,7 @@
   RS.WireClient._rs_init = function(remoteStorage) {
     hasLocalStorage = remoteStorage.localStorageAvailable();
     remoteStorage.remote = new RS.WireClient(remoteStorage);
+    this.online = true;
   };
 
   RS.WireClient._rs_supported = function() {
@@ -1358,6 +1388,58 @@
   // cache loaded from localStorage
   var cachedInfo = {};
 
+  function parseLinks(links, cb) {
+    var link, authUrl, storageType;
+    
+    links.forEach(function(l) {
+      if (l.rel === 'remotestorage') {
+        link = l;
+      } else if (l.rel === 'remoteStorage' && !link) {
+        link = l;
+      }
+    });
+    if (link) {
+      RemoteStorage.log('picking:', link, 'from profile links:', links);
+      authURL = link.properties['http://tools.ietf.org/html/rfc6749#section-4.2']
+            || link.properties['auth-endpoint'];
+      storageType = link.properties['http://remotestorage.io/spec/version']
+            || link.type;
+      cachedInfo[userAddress] = { href: link.href, type: storageType, authURL: authURL };
+      if (hasLocalStorage) {
+        localStorage[SETTINGS_KEY] = JSON.stringify({ cache: cachedInfo });
+      }
+      cb(link.href, storageType, authURL);
+    } else {
+      RemoteStorage.log('could not find rel="remotestorage" link among profile links:', links);
+      cb();
+    }
+  }
+
+  function webfingerOnload(xhr, cb) {
+    var profile;
+    if (xhr.status !== 200) {
+      RemoteStorage.log('webfinger responded with a '+xhr.status);
+      cb();
+      return;
+    }
+
+    try {
+      profile = JSON.parse(xhr.responseText);
+    } catch(e) {
+      RemoteStorage.log('Failed to parse webfinger profile ' + xhr.responseText);
+      cb();
+      return;
+    }
+
+    if (!profile.links) {
+      RemoteStorage.log('profile has no links section ' + JSON.stringify(profile));
+      cb();
+      return;
+    }
+
+    parseLinks(links, cb);
+  }
+
   /**
    * Class: RemoteStorage.Discover
    *
@@ -1379,68 +1461,19 @@
       return;
     }
     var hostname = userAddress.split('@')[1];
+    var scheme = (hostname.indexOf(':') === -1 ? 'https://' : 'http://');//special backdoor for the starter-kit
     var params = '?resource=' + encodeURIComponent('acct:' + userAddress);
-    var urls = [
-      'https://' + hostname + '/.well-known/webfinger' + params,
-      'https://' + hostname + '/.well-known/host-meta.json' + params,
-      'http://' + hostname + '/.well-known/webfinger' + params,
-      'http://' + hostname + '/.well-known/host-meta.json' + params
-    ];
+    var url = scheme + hostname + '/.well-known/webfinger' + params;
 
-    function tryOne() {
-      var xhr = new XMLHttpRequest();
-      var url = urls.shift();
-      if (!url) { return callback(); }
-      RemoteStorage.log('try url', url);
-      xhr.open('GET', url, true);
-      xhr.onabort = xhr.onerror = function() {
-        console.error("webfinger error", arguments, '(', url, ')');
-        tryOne();
-      };
-      xhr.onload = function() {
-        if (xhr.status !== 200) { return tryOne(); }
-        var profile;
-
-        try {
-          profile = JSON.parse(xhr.responseText);
-        } catch(e) {
-          RemoteStorage.log("Failed to parse profile ", xhr.responseText, e);
-          tryOne();
-          return;
-        }
-
-        if (!profile.links) {
-          RemoteStorage.log("profile has no links section ", JSON.stringify(profile));
-          tryOne();
-          return;
-        }
-
-        var link;
-        profile.links.forEach(function(l) {
-          if (l.rel === 'remotestorage') {
-            link = l;
-          } else if (l.rel === 'remoteStorage' && !link) {
-            link = l;
-          }
-        });
-        RemoteStorage.log('got profile', profile, 'and link', link);
-        if (link) {
-          var authURL = link.properties['http://tools.ietf.org/html/rfc6749#section-4.2']
-                  || link.properties['auth-endpoint'],
-            storageType = link.properties['http://remotestorage.io/spec/version']
-                  || link.type;
-          cachedInfo[userAddress] = { href: link.href, type: storageType, authURL: authURL };
-          if (hasLocalStorage) {
-            localStorage[SETTINGS_KEY] = JSON.stringify({ cache: cachedInfo });
-          }
-          callback(link.href, storageType, authURL);
-        } else {
-          tryOne();
-        }
-      };
-      xhr.send();
-    }
-    tryOne();
+    var xhr = new XMLHttpRequest();
+    RemoteStorage.log('try url', url);
+    xhr.open('GET', url, true);
+    xhr.onabort = xhr.onerror = function() {
+      console.error("webfinger error", arguments, '(', url, ')');
+      tryOne();
+    };
+    xhr.onload = webfingerOnload;
+    xhr.send();
   };
 
   RemoteStorage.Discover._rs_init = function(remoteStorage) {
@@ -1537,17 +1570,24 @@
 
   var onFeaturesLoaded;
   RemoteStorage.Authorize._rs_init = function(remoteStorage) {
+
     onFeaturesLoaded = function () {
+      var authParamsUsed = false;
       if (params) {
         if (params.error) {
           throw "Authorization server errored: " + params.error;
         }
         if (params.access_token) {
           remoteStorage.remote.configure(undefined, undefined, undefined, params.access_token);
+          authParamsUsed = true;
         }
         if (params.remotestorage) {
           remoteStorage.connect(params.remotestorage);
+          authParamsUsed = true;
         }
+      }
+      if (!authParamsUsed) {
+        remoteStorage.remote.stopWaitingForToken();
       }
     };
     var params = extractParams(),
@@ -1597,6 +1637,12 @@
     },
 
     set: function(scope, mode) {
+      if (typeof(scope) !== 'string' || scope.indexOf('/') !== -1 || scope.length === 0) {
+        throw new Error('scope should be a non-empty string without forward slashes');
+      }
+      if (mode !== 'r' && mode !== 'rw') {
+        throw new Error('mode should be either \'r\' or \'rw\'');
+      }
       this._adjustRootPaths(scope);
       this.scopeModeMap[scope] = mode;
     },
@@ -1608,12 +1654,12 @@
     remove: function(scope) {
       var savedMap = {};
       var name;
-      for(name in this.scopeModeMap) {
+      for (name in this.scopeModeMap) {
         savedMap[name] = this.scopeModeMap[name];
       }
       this.reset();
       delete savedMap[scope];
-      for(name in savedMap) {
+      for (name in savedMap) {
         this.set(name, savedMap[name]);
       }
     },
@@ -1623,15 +1669,43 @@
       return actualMode && (mode === 'r' || actualMode === 'rw');
     },
 
+    getModuleName: function(path) {
+      var pos, parts = path.split('/');
+      if (parts[0] !== '') {
+        throw new Error('path should start with a slash');
+      }
+      // /a => ['', 'a'] parts.length: 2, pos: 1 -> *
+      // /a/ => ['', 'a', ''] parts.length: 3, pos: 1 -> a
+      // /public/a => ['', 'public', 'a'] parts.length: 3, pos: 2 -> *
+      // /public/a/ => ['', 'public', 'a', ''] parts.length: 4, pos: 2 -> a
+      if (parts[1] === 'public') {
+        pos = 2;
+      } else {
+        pos = 1;
+      }
+      if (parts.length <= pos+1) {
+        return '*';
+      }
+      return parts[pos];
+    },
+
+    checkPath: function(path, mode) {
+      //check root access
+      if (this.check('*', mode)) {
+        return true;
+      }
+      return !!this.check(this.getModuleName(path), mode);
+    },
+
     reset: function() {
       this.rootPaths = [];
       this.scopeModeMap = {};
     },
 
     _adjustRootPaths: function(newScope) {
-      if('*' in this.scopeModeMap || newScope === '*') {
+      if ('*' in this.scopeModeMap || newScope === '*') {
         this.rootPaths = ['/'];
-      } else if(! (newScope in this.scopeModeMap)) {
+      } else if (! (newScope in this.scopeModeMap)) {
         this.rootPaths.push('/' + newScope + '/');
         this.rootPaths.push('/public/' + newScope + '/');
       }
@@ -1706,8 +1780,8 @@
 
   // documented in src/remotestorage.js
   RemoteStorage.prototype.claimAccess = function(scopes) {
-    if(typeof(scopes) === 'object') {
-      for(var key in scopes) {
+    if (typeof(scopes) === 'object') {
+      for (var key in scopes) {
         this.access.claim(key, scopes[key]);
       }
     } else {
@@ -1752,22 +1826,22 @@
   RemoteStorage.Env._rs_init = function(remoteStorage) {
     RemoteStorage.eventHandling(RemoteStorage.Env, "background", "foreground");
 
-    if( mode === 'browser') {
-      if( typeof(document.hidden) !== "undefined" ) {
+    if ( mode === 'browser') {
+      if ( typeof(document.hidden) !== "undefined" ) {
         env.hiddenProperty = "hidden";
         env.visibilityChangeEvent = "visibilitychange";
-      } else if( typeof(document.mozHidden) !== "undefined" ) {
+      } else if ( typeof(document.mozHidden) !== "undefined" ) {
         env.hiddenProperty = "mozHidden";
         env.visibilityChangeEvent = "mozvisibilitychange";
-      } else if( typeof(document.msHidden) !== "undefined" ) {
+      } else if ( typeof(document.msHidden) !== "undefined" ) {
         env.hiddenProperty = "msHidden";
         env.visibilityChangeEvent = "msvisibilitychange";
-      } else if( typeof(document.webkitHidden) !== "undefined" ) {
+      } else if ( typeof(document.webkitHidden) !== "undefined" ) {
         env.hiddenProperty = "webkitHidden";
         env.visibilityChangeEvent = "webkitvisibilitychange";
       }
       document.addEventListener(env.visibilityChangeEvent, function () {
-        if( document[env.hiddenProperty] ) {
+        if ( document[env.hiddenProperty] ) {
           RemoteStorage.Env.goBackground();
         } else {
           RemoteStorage.Env.goForeground();
@@ -1885,6 +1959,13 @@ RemoteStorage.Assets = {
     };
   }
 
+  function flashFor(evt) {
+    if (evt.method === 'GET' && evt.isFolder) {
+      return false;
+    }
+    return true;
+  }
+
   /**
    * Class: RemoteStorage.Widget
    *   the Widget Controler that comunicates with the view
@@ -1893,26 +1974,45 @@ RemoteStorage.Assets = {
    *   While listening to the Events emitted by its remoteStorage
    *   it set's corresponding states of the View.
    *
-   *   ready        :  connected
+   *   connected    :  connected
    *   disconnected :  initial
    *   connecting   :  authing
    *   authing      :  authing
-   *   sync-busy    :  busy
-   *   sync-done    :  connected
+   *   wire-busy    :  busy
+   *   wire-done    :  connected
    *   error        :  depending on the error initial,offline, unauthorized or error
    **/
   RemoteStorage.Widget = function(remoteStorage) {
+    var self = this;
+    var requestsToFlashFor = 0;
 
     // setting event listeners on rs events to put
     // the widget into corresponding states
     this.rs = remoteStorage;
-    this.rs.on('ready', stateSetter(this, 'connected'));
+    this.rs.remote.on('connected', stateSetter(this, 'connected'));
     this.rs.on('disconnected', stateSetter(this, 'initial'));
     this.rs.on('connecting', stateSetter(this, 'authing'));
     this.rs.on('authing', stateSetter(this, 'authing'));
-    this.rs.on('sync-busy', stateSetter(this, 'busy'));
-    this.rs.on('sync-done', stateSetter(this, 'connected'));
-    this.rs.on('error', errorsHandler(this) );
+    this.rs.on('error', errorsHandler(this));
+
+    if (this.rs.remote) {
+      this.rs.remote.on('wire-busy', function(evt) {
+        if (flashFor(evt)) {
+          requestsToFlashFor++;
+          stateSetter(self, 'busy')();
+        }
+      });
+
+      this.rs.remote.on('wire-done', function(evt) {
+        if (flashFor(evt)) {
+          requestsToFlashFor--;
+          if (requestsToFlashFor <= 0) {
+            stateSetter(self, 'connected')();
+          }
+        }
+      });
+    }
+
     if (hasLocalStorage) {
       var state = localStorage[LS_STATE_KEY];
       if (state && VALID_ENTRY_STATES[state]) {
@@ -1948,15 +2048,15 @@ RemoteStorage.Assets = {
     setView: function(view) {
       this.view = view;
       this.view.on('connect', function(options) {
-        if(typeof(options) === 'string') {
+        if (typeof(options) === 'string') {
           // options is simply a useraddress
           this.rs.connect(options);
-        } else if(options.special) {
+        } else if (options.special) {
           this.rs[options.special].connect(options);
         }
       }.bind(this));
       this.view.on('disconnect', this.rs.disconnect.bind(this.rs));
-      if(this.rs.sync) {
+      if (this.rs.sync) {
         this.view.on('sync', this.rs.sync.bind(this.rs));
       }
       try {
@@ -1966,14 +2066,14 @@ RemoteStorage.Assets = {
           this.rs.disconnect();
         }.bind(this));
       } catch(e) {
-        if(e.message && e.message.match(/Unknown event/)) {
+        if (e.message && e.message.match(/Unknown event/)) {
           // ignored. (the 0.7 widget-view interface didn't have a 'reset' event)
         } else {
           throw e;
         }
       }
 
-      if(this._rememberedState) {
+      if (this._rememberedState) {
         setTimeout(stateSetter(this, this._rememberedState), 0);
         delete this._rememberedState;
       }
@@ -1989,7 +2089,7 @@ RemoteStorage.Assets = {
 
   RemoteStorage.Widget._rs_init = function(remoteStorage) {
     hasLocalStorage = remoteStorage.localStorageAvailable();
-    if(! remoteStorage.widget) {
+    if (! remoteStorage.widget) {
       remoteStorage.widget = new RemoteStorage.Widget(remoteStorage);
     }
   };
@@ -3289,7 +3389,7 @@ Math.uuid = function (len, radix) {
    */
   RS.BaseClient = function(storage, base) {
     if (base[base.length - 1] !== '/') {
-      throw "Not a directory: " + base;
+      throw "Not a folder: " + base;
     }
 
     if (base === '/') {
@@ -3353,15 +3453,10 @@ Math.uuid = function (len, radix) {
      *
      * * when newValue and oldValue are set you are dealing with an update
      **/
-    /**
-     * Event: conflict
-     *
-     **/
 
-    RS.eventHandling(this, 'change', 'conflict');
+    RS.eventHandling(this, 'change');
     this.on = this.on.bind(this);
     storage.onChange(this.base, this._fireChange.bind(this));
-    storage.onConflict(this.base, this._fireConflict.bind(this));
   };
 
   RS.BaseClient.prototype = {
@@ -3379,7 +3474,7 @@ Math.uuid = function (len, radix) {
     // END LEGACY
 
     extend: function(object) {
-      for(var key in object) {
+      for (var key in object) {
         this[key] = object[key];
       }
       return this;
@@ -3410,7 +3505,7 @@ Math.uuid = function (len, radix) {
      *
      *   A promise for an object, representing child nodes.
      *
-     *   Keys ending in a forward slash represent *directory nodes*, while all
+     *   Keys ending in a forward slash represent *folder nodes*, while all
      *   other keys represent *data nodes*.
      *
      *   For spec versions <= 01, the data node information will contain only
@@ -3426,13 +3521,16 @@ Math.uuid = function (len, radix) {
      *   });
      *   (end code)
      */
-    getListing: function(path) {
-      if (typeof(path) === 'undefined') {
+    getListing: function(path, maxAge) {
+      if (typeof(path) !== 'string') {
         path = '';
       } else if (path.length > 0 && path[path.length - 1] !== '/') {
-        throw "Not a directory: " + path;
+        throw "Not a folder: " + path;
       }
-      return this.storage.get(this.makePath(path)).then(
+      if (typeof(maxAge) !== 'undefined' && typeof(maxAge) !== 'number') {
+        return promising().reject('Argument \'maxAge\' of baseClient.getListing must be undefined or a number');
+      }
+      return this.storage.get(this.makePath(path), maxAge).then(
         function(status, body) {
           return (status === 404) ? undefined : body;
         }
@@ -3445,7 +3543,7 @@ Math.uuid = function (len, radix) {
      * Get all objects directly below a given path.
      *
      * Parameters:
-     *   path      - path to the direcotry
+     *   path      - path to the folder
      *   typeAlias - (optional) local type-alias to filter for
      *
      * Returns:
@@ -3454,30 +3552,34 @@ Math.uuid = function (len, radix) {
      * Example:
      *   (start code)
      *   client.getAll('').then(function(objects) {
-     *     for(var key in objects) {
+     *     for (var key in objects) {
      *       console.log('- ' + key + ': ', objects[key]);
      *     }
      *   });
      *   (end code)
      */
-    getAll: function(path) {
-      if (typeof(path) === 'undefined') {
+    getAll: function(path, maxAge) {
+      if (typeof(path) !== 'string') {
         path = '';
       } else if (path.length > 0 && path[path.length - 1] !== '/') {
-        throw "Not a directory: " + path;
+        throw "Not a folder: " + path;
       }
-      return this.storage.get(this.makePath(path)).then(function(status, body) {
+      if (typeof(maxAge) !== 'undefined' && typeof(maxAge) !== 'number') {
+        return promising().reject('Argument \'maxAge\' of baseClient.getAll must be undefined or a number');
+      }
+
+      return this.storage.get(this.makePath(path), maxAge).then(function(status, body) {
         if (status === 404) { return; }
         if (typeof(body) === 'object') {
           var promise = promising();
           var count = Object.keys(body).length, i = 0;
           if (count === 0) {
-            // treat this like 404. it probably means a directory listing that
+            // treat this like 404. it probably means a folder listing that
             // has changes that haven't been pushed out yet.
             return;
           }
-          for(var key in body) {
-            this.storage.get(this.makePath(path + key)).
+          for (var key in body) {
+            this.storage.get(this.makePath(path + key), maxAge).
               then(function(status, b) {
                 body[this.key] = b;
                 i++;
@@ -3519,8 +3621,15 @@ Math.uuid = function (len, radix) {
      *   });
      *   (end code)
      */
-    getFile: function(path) {
-      return this.storage.get(this.makePath(path)).then(function(status, body, mimeType, revision) {
+    getFile: function(path, maxAge) {
+      if (typeof(path) !== 'string') {
+        return promising().reject('Argument \'path\' of baseClient.getFile must be a string');
+      }
+
+      if (typeof(maxAge) !== 'undefined' && typeof(maxAge) !== 'number') {
+        return promising().reject('Argument \'maxAge\' of baseClient.getFile must be undefined or a number');
+      }
+      return this.storage.get(this.makePath(path), maxAge).then(function(status, body, mimeType, revision) {
         return {
           data: body,
           mimeType: mimeType,
@@ -3565,6 +3674,16 @@ Math.uuid = function (len, radix) {
      *
      */
     storeFile: function(mimeType, path, body) {
+      if (typeof(mimeType) !== 'string') {
+        return promising().reject('Argument \'mimeType\' of baseClient.storeFile must be a string');
+      }
+      if (typeof(path) !== 'string') {
+        return promising().reject('Argument \'path\' of baseClient.storeFile must be a string');
+      }
+      if (typeof(body) !== 'string' && typeof(body) !== 'object') {
+        return promising().reject('Argument \'body\' of baseClient.storeFile must be a string, ArrayBuffer, or ArrayBufferView');
+      }
+
       var self = this;
       return this.storage.put(this.makePath(path), body, mimeType).then(function(status, _body, _mimeType, revision) {
         if (status === 200 || status === 201) {
@@ -3596,8 +3715,14 @@ Math.uuid = function (len, radix) {
      *     });
      *   (end code)
      */
-    getObject: function(path) {
-      return this.storage.get(this.makePath(path)).then(function(status, body, mimeType, revision) {
+    getObject: function(path, maxAge) {
+      if (typeof(path) !== 'string') {
+        return promising().reject('Argument \'path\' of baseClient.getObject must be a string');
+      }
+      if (typeof(maxAge) !== 'undefined' && typeof(maxAge) !== 'number') {
+        return promising().reject('Argument \'maxAge\' of baseClient.getObject must be undefined or a number');
+      }
+      return this.storage.get(this.makePath(path), maxAge).then(function(status, body, mimeType, revision) {
         if (typeof(body) === 'object') {
           return body;
         } else if (typeof(body) !== 'undefined' && status === 200) {
@@ -3648,6 +3773,15 @@ Math.uuid = function (len, radix) {
      *   See <declareType> for examples.
      */
     storeObject: function(typeAlias, path, object) {
+      if (typeof(typeAlias) !== 'string') {
+        return promising().reject('Argument \'typeAlias\' of baseClient.storeObject must be a string');
+      }
+      if (typeof(path) !== 'string') {
+        return promising().reject('Argument \'path\' of baseClient.storeObject must be a string');
+      }
+      if (typeof(object) !== 'object') {
+        return promising().reject('Argument \'object\' of baseClient.storeObject must be an object');
+      }
       this._attachType(object, typeAlias);
       try {
         var validationResult = this.validate(object);
@@ -3679,30 +3813,39 @@ Math.uuid = function (len, radix) {
      *   path     - Path relative to the module root.
      */
     remove: function(path) {
+      if (typeof(path) !== 'string') {
+        return promising().reject('Argument \'path\' of baseClient.remove must be a string');
+      }
       return this.storage.delete(this.makePath(path));
     },
 
-    cache: function(path, disable) {
-      this.storage.caching[disable !== false ? 'enable' : 'disable'](
-        this.makePath(path)
-      );
-      return this;
+
+    cache: function(path, strategy) {
+      if (typeof(path) !== 'string') {
+        throw 'Argument \'path\' of baseClient.cache must be a string';
+      }
+      if (strategy === undefined) {
+        strategy = this.storage.caching.ALL;
+      }
+      if (strategy !== this.storage.caching.SEEN &&
+          strategy !== this.storage.caching.SEEN_AND_FOLDERS &&
+          strategy !== this.storage.caching.ALL) {
+        throw 'Argument \'strategy\' of baseclient.cache must be one of '
+            + '[remoteStorage.caching.SEEN, remoteStorage.caching.SEEN_AND_FOLDERS, remoteStorage.caching.ALL]';
+      }
+      this.storage.caching.set(this.makePath(path), strategy);
     },
 
+    flush: function(path) {
+      return this.storage.local.flush(path);
+    },
+    
     makePath: function(path) {
       return this.base + (path || '');
     },
 
     _fireChange: function(event) {
       this._emit('change', event);
-    },
-
-    _fireConflict: function(event) {
-      if (this._handlers.conflict.length > 0) {
-        this._emit('conflict', event);
-      } else {
-        event.resolve('remote');
-      }
     },
 
     _cleanPath: RS.WireClient.cleanPath,
@@ -3716,6 +3859,9 @@ Math.uuid = function (len, radix) {
      *   path     - Path relative to the module root.
      */
     getItemURL: function(path) {
+      if (typeof(path) !== 'string') {
+        throw 'Argument \'path\' of baseClient.getItemURL must be a string';
+      }
       if (this.storage.connected) {
         path = this._cleanPath( this.makePath(path) );
         return this.storage.remote.href + path;
@@ -3757,6 +3903,10 @@ Math.uuid = function (len, radix) {
    */
   RS.BaseClient._rs_init = function() {
     RS.prototype.scope = function(path) {
+      if (typeof(path) !== 'string') {
+        throw 'Argument \'path\' of baseClient.scope must be a string';
+      }
+
       return new RS.BaseClient(this, path);
     };
   };
@@ -3792,13 +3942,13 @@ Math.uuid = function (len, radix) {
       if (schema.extends) {
         var extendedAlias;
         var parts = schema.extends.split('/');
-        if(parts.length === 1) {
+        if (parts.length === 1) {
           extendedAlias = moduleName + '/' + parts.shift();
         } else {
           extendedAlias = parts.join('/');
         }
         var extendedUri = this.uris[extendedAlias];
-        if(! extendedUri) {
+        if (! extendedUri) {
           throw "Type '" + fullAlias + "' tries to extend unknown schema '" + extendedAlias + "'";
         }
         schema.extends = this.schemas[extendedUri];
@@ -3820,7 +3970,7 @@ Math.uuid = function (len, radix) {
     inScope: function(moduleName) {
       var ml = moduleName.length;
       var schemas = {};
-      for(var alias in this.uris) {
+      for (var alias in this.uris) {
         if (alias.substr(0, ml + 1) === moduleName + '/') {
           var uri = this.uris[alias];
           schemas[uri] = this.schemas[uri];
@@ -3854,7 +4004,7 @@ Math.uuid = function (len, radix) {
      **/
     validate: function(object) {
       var schema = RemoteStorage.BaseClient.Types.getSchema(object['@context']);
-      if(schema) {
+      if (schema) {
         return tv4.validateResult(object, schema);
       } else {
         throw new SchemaNotFound(object['@context']);
@@ -3865,7 +4015,7 @@ Math.uuid = function (len, radix) {
     //  /* OR */
     // client.declareType(alias, uri, schema);
     declareType: function(alias, uri, schema) {
-      if(! schema) {
+      if (! schema) {
         schema = uri;
         uri = this._defaultTypeURI(alias);
       }
@@ -3896,23 +4046,15 @@ Math.uuid = function (len, radix) {
 
   var SETTINGS_KEY = "remotestorage:caching";
 
-  function containingDir(path) {
-    if(path === '') {
+  function containingFolder(path) {
+    if (path === '') {
       return '/';
     }
-    if(! path) {
+    if (! path) {
       throw "Path not given!";
     }
 
     return path.replace(/\/+/g, '/').replace(/[^\/]+\/?$/, '');
-  }
-
-  function isDir(path) {
-    return path.substr(-1) === '/';
-  }
-
-  function pathContains(a, b) {
-    return a.slice(0, b.length) === b;
   }
 
   /**
@@ -3925,57 +4067,48 @@ Math.uuid = function (len, radix) {
   };
 
   RemoteStorage.Caching.prototype = {
-
-    /**
-     * Method: enable
-     *
-     * Enable caching for the given path.
-     *
-     * here, `data` is true if both folder listings and
-     * documents in the subtree should be cached,
-     * and false to indicate that only folder listings,
-     * not documents in the subtree should be cached.
-     *
-     * Parameters:
-     *   path - Absolute path to a directory.
-     */
-    enable: function(path) { this.set(path, { data: true, ready: false }); },
-    /**
-     * Method: disable
-     *
-     * Disable caching for the given path.
-     *
-     * Parameters:
-     *   path - Absolute path to a directory.
-     */
-    disable: function(path) { this.remove(path); },
-
+    SEEN: false,
+    SEEN_AND_FOLDERS: { data: false },
+    ALL: { data: true },
+    
     /**
      ** configuration methods
      **/
 
-    get: function(path) {
-      this._validateDirPath(path);
-      return this._pathSettingsMap[path];
+    set: function(path, value) {
+      if(typeof(path) !== 'string') {
+        throw new Error('path should be a string');
+      }
+      if (typeof(value) === 'undefined') {
+        throw new Error("value should be something like remoteStorage.caching.FOLDERS_AND_SEEN");
+      }
+      this._rootPaths[path] = value;
+      if ((value === this.SEEN_AND_FOLDERS || value === this.ALL)
+          && (this.activateHandler)) {
+        this.activateHandler(path);
+      } 
     },
 
-    set: function(path, settings) {
-      if((typeof(settings) === 'object') && (settings.ready)) {
-        this.resolveQueue(path);
-      }
-      this._validateDirPath(path);
-      if(typeof(settings) !== 'object') {
-        throw new Error("settings is required");
-      }
-      this._pathSettingsMap[path] = settings;
-      this._updateRoots();
+    onActivate: function(cb) {
+      this.activateHandler = cb;
     },
-
-    remove: function(path) {
-      this._validateDirPath(path);
-      delete this._pathSettingsMap[path];
-      this._updateRoots();
+    
+    /**
+     * Method: checkPath
+     * 
+     * 
+     * retrieves caching setting to smallest tree containing path.
+     **/
+    checkPath: function(path) {
+      if (this._rootPaths[path] !== undefined) {
+        return this._rootPaths[path];
+      } else if (path === '/') {
+        return this.SEEN;
+      } else {
+        return this.checkPath(containingFolder(path));
+      }
     },
+    
     /**
      * Method: reset
      * 
@@ -3983,173 +4116,13 @@ Math.uuid = function (len, radix) {
      * deletes all caching information.
      **/
     reset: function() {
-      this.rootPaths = [];
-      this._pathSettingsMap = {};
-    },
-
-    /**
-     ** queue methods
-     **/
-
-    /**
-     * Method: waitForPath
-     *
-     * Queues a promise and fulfills it when the local cache is ready
-     *
-     * path: the path for which we want to be notified when it's ready in local
-     *
-     * Returns: a promise
-     */
-    waitForPath: function(path) {
-      var promise = promising();
-      if(this.cachePathReady(path)) {
-        promise.fulfill();
-      } else {
-        if(!this.queuedPromises) {
-          this.queuedPromises = {};
-        }
-        if(!this.queuedPromises[path]) {
-          this.queuedPromises[path] = [];
-        }
-        this.queuedPromises[path].push(promise);
-      }
-      return promise;
-    },
-
-    /**
-     * Method: resolveQueue
-     *
-     * rootPath: the subtree for which to fulfill queued promises
-     *
-     * resolves promises that were waiting for a part of the local cache to be ready
-     *
-     */
-    resolveQueue: function(rootPath) {
-      var path, i;
-      if(!this.queuedPromises) {
-        return;
-      }
-      for(path in this.queuedPromises) {
-        if(path.substring(0, rootPath.length) === rootPath) {
-          for(i=0; i<this.queuedPromises[path].length; i++) {
-            this.queuedPromises[path][i].fulfill();
-          }
-          delete this.queuedPromises[path];
-        }
-      }
-    },
-
-
-    /**
-     ** query methods
-     **/
-
-    /**
-     * Method: descendIntoPath
-     *
-     * Checks if the given directory path should be followed.
-     *
-     * Returns: true or false
-     */
-    descendIntoPath: function(path) {
-      this._validateDirPath(path);
-      return !! this._query(path);
-    },
-
-    /**
-     * Method: cachePath
-     *
-     * Checks if given path should be cached.
-     *
-     * Returns: true or false
-     */
-    cachePath: function(path) {
-      this._validatePath(path);
-      var settings = this._query(path);
-      if(isDir(path)) {
-        return !!settings;
-      } else {
-        return !!settings && (settings.data === true);
-      }
-    },
-
-    /**
-     * Method: cachePathReady
-     *
-     * Checks if given path should be cached and is ready (i.e. sync has completed at least once).
-     *
-     * Returns: true or false
-     */
-    cachePathReady: function(path) {
-      if(!this.cachePath(path)) {
-        return false;
-      }
-      var settings = this._query(path);
-      return ((typeof(settings) === 'object') && (settings.ready));
-    },
-
-    /**
-     ** private methods
-     **/
-
-    // gets settings for given path. walks up the path until it finds something.
-    _query: function(path) {
-      return this._pathSettingsMap[path] ||
-        path !== '/' &&
-        this._query(containingDir(path));
-    },
-
-    _validatePath: function(path) {
-      if(typeof(path) !== 'string') {
-        throw new Error("path is required");
-      }
-    },
-
-    _validateDirPath: function(path) {
-      this._validatePath(path);
-      if(! isDir(path)) {
-        throw new Error("not a directory path: " + path);
-      }
-      if(path[0] !== '/') {
-        throw new Error("path not absolute: " + path);
-      }
-    },
-
-    _updateRoots: function() {
-      var roots = {};
-      for(var a in this._pathSettingsMap) {
-        // already a root
-        if(roots[a]) {
-          continue;
-        }
-        var added = false;
-        for(var b in this._pathSettingsMap) {
-          if(pathContains(a, b)) {
-            roots[b] = true;
-            added = true;
-            break;
-          }
-        }
-        if(! added) {
-          roots[a] = true;
-        }
-      }
-      this.rootPaths = Object.keys(roots);
-    },
-
+      this._rootPaths = {};
+    }
   };
 
-  Object.defineProperty(RemoteStorage.Caching.prototype, 'list', {
-    get: function() {
-      var list = [];
-      for(var path in this._pathSettingsMap) {
-        list.push({ path: path, settings: this._pathSettingsMap[path] });
-      }
-      return list;
-    }
-  });
-
-
+  //at this point the global remoteStorage object has not been created yet,
+  //only its prototype exists so far, so we define a self-constructing
+  //property on there:
   Object.defineProperty(RemoteStorage.prototype, 'caching', {
     configurable: true,
     get: function() {
@@ -4160,7 +4133,7 @@ Math.uuid = function (len, radix) {
       return caching;
     }
   });
-
+  
   RemoteStorage.Caching._rs_init = function() {};
 
 })(typeof(window) !== 'undefined' ? window : global);
@@ -4169,255 +4142,725 @@ Math.uuid = function (len, radix) {
 /** FILE: src/sync.js **/
 (function(global) {
 
-  //
-  // The synchronization algorithm is as follows:
-  //
-  // (for each path in caching.rootPaths)
-  //
-  // (1) Fetch all pending changes from 'local'
-  // (2) Try to push pending changes to 'remote', if that fails mark a
-  //     conflict, otherwise clear the change.
-  // (3) Folder items: GET a listing
-  //     File items: GET the file
-  // (4) Compare versions. If they match the locally cached one, return.
-  //     Otherwise continue.
-  // (5) Folder items: For each child item, run this algorithm starting at (3).
-  //     File items: Fetch remote data and replace locally cached copy.
-  //
-  // Depending on the API version the server supports, the version comparison
-  // can either happen on the server (through ETag, If-Match, If-None-Match
-  // headers), or on the client (through versions specified in the parent listing).
-  //
-
   var syncInterval = 10000;
-
-  function isDir(path) {
-    return path[path.length - 1] === '/';
-  }
-
-  function descendInto(remote, local, path, keys, promise) {
-    var n = keys.length, i = 0;
-    if (n === 0) { promise.fulfill(); }
-    function oneDone() {
-      i++;
-      if (i === n) { promise.fulfill(); }
-    }
-    keys.forEach(function(key) {
-      synchronize(remote, local, path + key).then(oneDone);
-    });
-  }
-
-  function updateLocal(remote, local, path, body, contentType, revision, promise) {
-    if (isDir(path)) {
-      local.putDirectory(path, body, revision).then(function() {
-        descendInto(remote, local, path, Object.keys(body), promise);
-      });
-    } else {
-      local.put(path, body, contentType, true, revision).then(promise.fulfill);
-    }
-  }
-
-  function allDifferentKeys(a, b) {
-    var keyObject = {};
-    for (var ak in a) {
-      if (JSON.stringify(a[ak]) !== JSON.stringify(b[ak])) {
-        keyObject[ak] = true;
-      }
-    }
-    for (var bk in b) {
-      if (JSON.stringify(a[bk]) !== JSON.stringify(b[bk])) {
-        keyObject[bk] = true;
-      }
-    }
-    return Object.keys(keyObject);
-  }
-
-  function promiseDeleteLocal(local, path) {
-    var promise = promising();
-    deleteLocal(local, path, promise);
-    return promise;
-  }
-
-  function deleteLocal(local, path, promise) {
-    if (isDir(path)) {
-      local.get(path).then(function(localStatus, localBody, localContentType, localRevision) {
-        var keys = [], failed = false;
-        for (var item in localBody) {
-          keys.push(item);
-        }
-        var n = keys.length, i = 0;
-        if (n === 0) { promise.fulfill(); }
-
-        function oneDone() {
-          i++;
-          if (i === n && !failed) { promise.fulfill(); }
-        }
-
-        function oneFailed(error) {
-          if (!failed) {
-            failed = true;
-            promise.reject(error);
-          }
-        }
-
-        keys.forEach(function(key) {
-          promiseDeleteLocal(local, path + key).then(oneDone, oneFailed);
-        });
-      });
-    } else {
-      local.delete(path, true).then(promise.fulfill, promise.reject);
-    }
-  }
-
-  function synchronize(remote, local, path, options) {
-    var promise = promising();
-    local.get(path).then(function(localStatus, localBody, localContentType, localRevision) {
-      remote.get(path, {
-        ifNoneMatch: localRevision
-      }).then(function(remoteStatus, remoteBody, remoteContentType, remoteRevision) {
-        if (remoteStatus === 401 || remoteStatus === 403) {
-          throw new RemoteStorage.Unauthorized();
-        } else if (remoteStatus === 412 || remoteStatus === 304) {
-          // up to date.
-          promise.fulfill();
-        } else if (localStatus === 404 && remoteStatus === 200) {
-          // local doesn't exist, remote does.
-          updateLocal(remote, local, path, remoteBody, remoteContentType, remoteRevision, promise);
-        } else if (localStatus === 200 && remoteStatus === 404) {
-          // remote doesn't exist, local does.
-          deleteLocal(local, path, promise);
-        } else if (localStatus === 200 && remoteStatus === 200) {
-          if (isDir(path)) {
-            if (remoteRevision && remoteRevision === localRevision) {
-              promise.fulfill();
-            } else {
-              local.putDirectory(path, remoteBody, remoteRevision).then(function() {
-                // TODO Factor in  `cached` items of directory cache node
-                var differentObjects = allDifferentKeys(localBody, remoteBody);
-                descendInto(remote, local, path, differentObjects, promise);
-              });
-            }
-          } else {
-            updateLocal(remote, local, path, remoteBody, remoteContentType, remoteRevision, promise);
-          }
-        } else {
-          promise.fulfill();
-        }
-      }).then(undefined, promise.reject);
-    }).then(undefined, promise.reject);
-    return promise;
-  }
-
-  function fireConflict(local, path, attributes) {
-    local.setConflict(path, attributes);
-  }
-
-  function pushChanges(remote, local, path) {
-    return local.changesBelow(path).then(function(changes) {
-      var n = changes.length, i = 0;
-      var promise = promising();
-      function oneDone(path) {
-        function done() {
-          i++;
-          if (i === n) { promise.fulfill(); }
-        }
-        if (path) {
-          // change was propagated -> clear.
-          local.clearChange(path).then(done);
-        } else {
-          // change wasn't propagated (conflict?) -> handle it later.
-          done();
-        }
-      }
-      if (n > 0) {
-        var errored = function(err) {
-          console.error("pushChanges aborted due to error: ", err, err.stack);
-          promise.reject(err);
-        };
-        changes.forEach(function(change) {
-          if (change.conflict) {
-            var res = change.conflict.resolution;
-            if (res) {
-              RemoteStorage.log('about to resolve', res);
-              // ready to be resolved.
-              change.action = (res === 'remote' ? change.conflict.remoteAction : change.conflict.localAction);
-              change.force = true;
-            } else {
-              RemoteStorage.log('conflict pending for ', change.path);
-              // pending conflict, won't do anything.
-              return oneDone();
-            }
-          }
-          switch(change.action) {
-          case 'PUT':
-            var options = {};
-            if (! change.force) {
-              if (change.revision) {
-                options.ifMatch = change.revision;
-              } else {
-                options.ifNoneMatch = '*';
-              }
-            }
-            local.get(change.path).then(function(status, body, contentType) {
-              if (status === 200) {
-                return remote.put(change.path, body, contentType, options);
-              } else {
-                return 200; // fake 200 so the change is cleared.
-              }
-            }).then(function(status) {
-              if (status === 412) {
-                fireConflict(local, change.path, {
-                  localAction: 'PUT',
-                  remoteAction: 'PUT'
-                });
-                oneDone();
-              } else {
-                oneDone(change.path);
-              }
-            }).then(undefined, errored);
-            break;
-          case 'DELETE':
-            remote.delete(change.path, {
-              ifMatch: change.force ? undefined : change.revision
-            }).then(function(status) {
-              if (status === 412) {
-                fireConflict(local, change.path, {
-                  remoteAction: 'PUT',
-                  localAction: 'DELETE'
-                });
-                oneDone();
-              } else {
-                oneDone(change.path);
-              }
-            }).then(undefined, errored);
-            break;
-          }
-        });
-        return promise;
-      }
-    });
-  }
 
   /**
    * Class: RemoteStorage.Sync
    **/
-  RemoteStorage.Sync = {
+  RemoteStorage.Sync = function(setLocal, setRemote, setAccess, setCaching) {
+    this.local = setLocal;
+    this.local.onDiff(function(path) {
+      this.addTask(path);
+      this.doTasks();
+    }.bind(this));
+    this.remote = setRemote;
+    this.access = setAccess;
+    this.caching = setCaching;
+    this.caching.onActivate(function(path) {
+      this.addTask(path);
+      this.doTasks();
+    }.bind(this));
+    this._tasks = {};
+    this._running = {};
+    this._timeStarted = {};
+    RemoteStorage.eventHandling(this, 'done', 'req-done');
+  }
+  RemoteStorage.Sync.prototype = {
+    now: function() {
+      return new Date().getTime();
+    },
+    queueGetRequest: function(path, promise) {
+      if (!this.remote.connected) {
+        promise.reject('cannot fulfill maxAge requirement - remote is not connected');
+      } else if (!this.remote.online) {
+        promise.reject('cannot fulfill maxAge requirement - remote is not online');
+      } else {
+        this.addTask(path, function() {
+          this.local.get(path).then(function(status, bodyOrItemsMap, contentType) {
+            promise.fulfill(status, bodyOrItemsMap, contentType);
+          });
+        }.bind(this));
+        this.doTasks();
+      }
+    },
+    corruptServerItemsMap: function(itemsMap, force02) {
+      var i;
+      if ((typeof(itemsMap) !== 'object') ||
+          (Array.isArray(itemsMap))) {
+         return true;
+      }
+      for (i in itemsMap) {
+        if (typeof(itemsMap[i]) !== 'object') {
+          return true;
+        }
+        if(typeof(itemsMap[i].ETag) !== 'string') {
+          return true;
+        }
+        if (i.substr(-1) === '/') {
+          if (i.substring(0, i.length-1).indexOf('/') != -1) {
+            return true;
+          }
+        } else {
+          if (i.indexOf('/') != -1) {
+            return true;
+          }
+          if (force02) {
+            if (typeof(itemsMap[i]['Content-Type']) !== 'string') {
+              return true;
+            }
+            if (typeof(itemsMap[i]['Content-Length']) !== 'number') {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    },
+    corruptItemsMap: function(itemsMap) {
+      var i;
+      if ((typeof(itemsMap) !== 'object') ||
+          (Array.isArray(itemsMap))) {
+         return true;
+      }
+      for (i in itemsMap) {
+        if (typeof(itemsMap[i]) !== 'boolean') {
+          return true;
+        }
+      }
+      return false;
+    },
+    corruptRevision: function(rev) {
+      return ((typeof(rev) !== 'object') ||
+          (Array.isArray(rev)) ||
+          (rev.revision && typeof(rev.revision) != 'string') ||
+          (rev.body && typeof(rev.body) != 'string' && typeof(rev.body) != 'object') ||
+          (rev.contentType && typeof(rev.contentType) != 'string') ||
+          (rev.contentLength && typeof(rev.contentLength) != 'number') ||
+          (rev.timestamp && typeof(rev.timestamp) != 'number') ||
+          (rev.itemsMap && this.corruptItemsMap(rev.itemsMap)));
+    },
+    isCorrupt: function(node) {
+      return ((typeof(node) !== 'object') ||
+          (Array.isArray(node)) ||
+          (typeof(node.path) !== 'string') ||
+          (this.corruptRevision(node.common)) ||
+          (node.local && this.corruptRevision(node.local)) ||
+          (node.remote && this.corruptRevision(node.remote)) ||
+          (node.push && this.corruptRevision(node.push)));
+    },
+    checkDiffs: function() {
+      var num = 0;
+      return this.local.forAllNodes(function(node) {
+        if (num > 100) {
+          return;
+        }
+        if (this.isCorrupt(node, false)) {
+          console.log('WARNING: corrupt node in local cache', node);
+          //console.log((typeof(node) !== 'object'),
+          //  (Array.isArray(node)),
+          //  (typeof(node.path) !== 'string'),
+          //  (this.corruptRevision(node.common)),
+          //  (node.local && this.corruptRevision(node.local)),
+          //  (node.remote && this.corruptRevision(node.remote)),
+          //  (node.push && this.corruptRevision(node.push)));
+          if (typeof(node) === 'object' && node.path) {
+            this.addTask(node.path);
+            num++;
+          }
+        } else if (this.needsFetch(node)
+            && this.access.checkPath(node.path, 'r')) {
+          this.addTask(node.path);
+          num++;
+        } else if (this.needsPush(node)
+            && this.access.checkPath(node.path, 'rw')) {
+          this.addTask(node.path);
+          num++;
+        }
+      }.bind(this)).then(function() {
+        return num;
+      }, function(err) {
+        throw err;
+      });
+    },
+    tooOld: function(node) {
+      if (node.common) {
+        if (!node.common.timestamp) {
+          return true;
+        }
+        return (this.now() - node.common.timestamp > syncInterval);
+      }
+      return false;
+    },
+    inConflict: function(node) {
+      return (node.local && node.remote && (node.remote.body !== undefined || node.remote.itemsMap));
+    },
+    needsFetch: function(node) {
+      if (this.inConflict(node)) {
+        return true;
+      }
+      if (node.common && node.common.itemsMap === undefined && node.common.body === undefined) {
+        return true;
+      }
+      if (node.remote && node.remote.itemsMap === undefined && node.remote.body === undefined) {
+        return true;
+      }
+    },
+    needsPush: function(node) {
+      if (this.inConflict(node)) {
+        return false;
+      }
+      if (node.local && !node.push) {
+        return true;
+      }
+    },
+    getParentPath: function(path) {
+      var parts = path.match(/^(.*\/)([^\/]+\/?)$/);
+      if (parts) {
+        return parts[1];
+      } else {
+        throw new Error('not a valid path: "'+path+'"');
+      }
+    },
+    checkRefresh: function() {
+      return this.local.forAllNodes(function(node) {
+        var parentPath;
+        if (this.tooOld(node)) {
+          try {
+            parentPath = this.getParentPath(node.path);
+          } catch(e) {
+            console.log('WARNING: can\'t get parentPath of', node.path);
+            //node.path is already '/', can't take parentPath
+          }
+          if (parentPath && this.access.checkPath(parentPath, 'r')) {
+            this._tasks[parentPath] = [];
+          } else if (this.access.checkPath(node.path, 'r')) {
+            this._tasks[node.path] = [];
+          }
+        }
+      }.bind(this)).then(function() {
+        var i, j;
+        for(i in this._tasks) {
+          nodes = this.local._getInternals()._nodesFromRoot(i);
+          for (j=1; j<nodes.length; j++) {
+            if (this._tasks[nodes[j]]) {
+              delete this._tasks[i];
+            }
+          }
+        }
+      }.bind(this), function(err) {
+        throw err;
+      });
+    },
+    doTask: function(path) {
+      return this.local.getNodes([path]).then(function(objs) {
+        if(typeof(objs[path]) === 'undefined') {
+          //first fetch:
+          return {
+            action: 'get',
+            path: path,
+            promise: this.remote.get(path)
+          };
+        } else if (objs[path].remote && objs[path].remote.revision && !objs[path].remote.itemsMap && !objs[path].remote.body) {
+          //fetch known-stale child:
+          return {
+            action: 'get',
+            path: path,
+            promise: this.remote.get(path)
+          };
+        } else if (objs[path].local && objs[path].local.body) {
+          //push put:
+          objs[path].push = this.local._getInternals()._deepClone(objs[path].local);
+          objs[path].push.timestamp =  this.now();
+          return this.local.setNodes(objs).then(function() {
+            var options;
+            if (objs[path].common.revision) {
+              options = {
+                ifMatch: objs[path].common.revision
+              };
+            } else {
+              //force this to be an initial PUT (fail if something is already there)
+              options = {
+                ifNoneMatch: '*'
+              };
+            }
+            return {
+              action: 'put',
+              path: path,
+              promise: this.remote.put(path, objs[path].push.body, objs[path].push.contentType, options)
+            };
+          }.bind(this));
+        } else if (objs[path].local && objs[path].local.body === false) {
+          //push delete:
+          objs[path].push = { body: false, timestamp: this.now() };
+          return this.local.setNodes(objs).then(function() {
+            var options;
+            if (objs[path].common.revision) {
+              options = {
+                ifMatch: objs[path].common.revision
+              };
+            }
+            return {
+              action: 'delete',
+              path: path,
+              promise: this.remote.delete(path, options)
+            };
+          }.bind(this));
+        } else {
+          //refresh:
+          var options = undefined;
+          if (objs[path].common.revision) {
+            return {
+              action: 'get',
+              path: path,
+              promise: this.remote.get(path, {
+                ifMatch: objs[path].common.revision
+              })
+            };
+          } else {
+            return {
+              action: 'get',
+              path: path,
+              promise: this.remote.get(path)
+            };
+          }
+        }
+      }.bind(this));
+    },
+    autoMerge: function(obj) {
+      var newValue, oldValue;
+      if (!obj.remote) {
+        return obj;
+      }
+      if (!obj.local) {
+        if (obj.remote) {
+          if (obj.path.substr(-1) === '/') {
+            newValue = obj.remote.itemsMap;
+            oldValue = obj.common.itemsMap;
+          } else {
+            newValue = (obj.remote.body === false ? undefined : obj.remote.body);
+            oldValue = (obj.common.body === false ? undefined : obj.common.body);
+          }
+          if (newValue) {
+            this.local._emit('change', {
+              origin: 'remote',
+              path: obj.path,
+              oldValue: oldValue,
+              newValue: newValue
+            });
+            obj.common = obj.remote;
+            delete obj.remote;
+          }
+        }
+        return obj;
+      }
+      if (obj.path.substr(-1) === '/') {
+        //auto merge folder once remote was fetched:
+        if (obj.remote.itemsMap) {
+          obj.common = obj.remote;
+          delete obj.remote;
+          if (obj.common.itemsMap) {
+            for (i in obj.common.itemsMap) {
+              if (!obj.local.itemsMap[i]) {
+                //indicates the node is either newly being fetched
+                //has been deleted locally (whether or not leading to conflict);
+                //before listing it in local listings, check if a local deletion
+                //exists.
+                obj.local.itemsMap[i] = false;
+              }
+            }
+          }
+        }
+        return obj;
+      } else {
+        if (obj.remote.body !== undefined) {
+          //keep/revert:
+          this.local._emit('change', {
+            origin: 'conflict',
+            path: obj.path,
+            oldValue: obj.local.body,
+            newValue: obj.remote.body,
+            oldContentType: obj.local.contentType,
+            newContentType: obj.remote.contentType
+          });
+          obj.common = obj.remote;
+          delete obj.remote;
+          delete obj.local;
+        }
+        delete obj.push;
+        return obj;
+      }
+    },
+    markChildren: function(path, itemsMap, changedObjs, missingChildren) {
+      var i, paths = [], meta = {}, recurse = {};
+      for (i in itemsMap) {
+        paths.push(path+i);
+        meta[path+i] = itemsMap[i];
+      }
+      for (i in missingChildren) {
+        paths.push(path+i);
+      }
+      return this.local.getNodes(paths).then(function(objs) {
+        var j, k, cachingStrategy, create;
+        for (j in objs) {
+          if (itemsMap[j]) {
+            if (objs[j] && objs[j].common) {
+              if (objs[j].common.revision !== meta[j].ETag) {
+                if (!objs[j].remote || objs[j].remote.revision !== meta[j].ETag) {
+                  changedObjs[j] = this.local._getInternals()._deepClone(objs[j]);
+                  changedObjs[j].remote = {
+                    revision: meta[j].ETag,
+                    timestamp: this.now()
+                  };
+                  changedObjs[j] = this.autoMerge(changedObjs[j]);
+                }
+              }
+            } else {
+              cachingStrategy = this.caching.checkPath(j);
+              if(j.substr(-1) === '/') {
+                create = (cachingStrategy === this.caching.SEEN_AND_FOLDERS || cachingStrategy === this.caching.ALL);
+              } else {
+                create = (cachingStrategy === this.caching.ALL);
+              }
+              if (create) {
+                changedObjs[j] = {
+                  path: j,
+                  common: {
+                    timestamp: this.now()
+                  },
+                  remote: {
+                    revision: meta[j].ETag,
+                    timestamp: this.now()
+                  }
+                };
+              }
+            }
+            if (changedObjs[j] && meta[j]['Content-Type']) {
+              changedObjs[j].remote.contentType = meta[j]['Content-Type'];
+            }
+            if (changedObjs[j] && meta[j]['Content-Length']) {
+              changedObjs[j].remote.contentLength = meta[j]['Content-Length'];
+            }
+          } else if (missingChildren[i] && objs[j] && objs[j].common) {
+            if (objs[j].common.itemsMap) {
+              for (k in objs[j].common.itemsMap) {
+                recurse[j+k] = true;
+              }
+            }
+            if (objs[j].local && objs[j].local.itemsMap) {
+              for (k in objs[j].local.itemsMap) {
+                recurse[j+k] = true;
+              }
+            }
+            //TODO: emit remote change event here?
+            //and conflict event if there's a local?
+            //pass it through autoMerge for that maybe?
+            changedObjs[j] = undefined;
+          }
+        }
+        return this.deleteRemoteTrees(Object.keys(recurse), changedObjs).then(function(changedObjs2) {
+          return this.local.setNodes(changedObjs2);
+        });
+      }.bind(this));
+    },
+    deleteRemoteTrees: function(paths, changedObjs) {
+      if (paths.length === 0) {
+        return promising().fulfill(changedObjs);
+      }
+      this.local.getNodes(paths).then(function(objs) {
+        var i, j, subPaths = {};
+        for (i in objs) {
+          if (objs[i]) {
+            if (i.substr(-1) === '/') {
+              if (objs[i].common && objs[i].common.itemsMap) {
+                for (j in objs[i].common.itemsMap) {
+                  subPaths[i+j] = true;
+                }
+              }
+              if (objs[i].local && objs[i].local.itemsMap) {
+                for (j in objs[i].local.itemsMap) {
+                  subPaths[i+j] = true;
+                }
+              }
+            } else {
+              if (objs[i].common && typeof(objs[i].common.body) !== undefined) {
+                changedObjs[j] = this.local._getInternals()._deepClone(objs[j]);
+                changedObjs[j].remote = {
+                  body: false,
+                  timestamp: this.now()
+                };
+                changedObjs[j] = this.autoMerge(changedObjs[j]);
+              }
+            }
+          }
+        }
+        //recurse whole tree depth levels at once:
+        return this.deleteRemoteTrees(Object.keys(subPaths), changedObjs).then(function(changedObjs2) {
+          return this.local.setNodes(changedObjs2);
+        });
+      });
+    },
+    completeFetch: function(path, bodyOrItemsMap, contentType, revision) {
+      return this.local.getNodes([path]).then(function(objs) {
+        var i, missingChildren = {};
+        if(!objs[path]) {
+          objs[path] = {
+            path: path,
+            common: {}
+          };
+        }
+        objs[path].remote = {
+          revision: revision,
+          timestamp: this.now()
+        };
+        if (path.substr(-1) === '/') {
+          objs[path].remote.itemsMap = {};
+          if (objs[path].common && objs[path].common.itemsMap) {
+            for (i in objs[path].common.itemsMap) {
+              if (!bodyOrItemsMap[i]) {
+                missingChildren[i] = true;
+              }
+            }
+          }
+          if (objs[path].local && objs[path].local.itemsMap) {
+            for (i in objs[path].local.itemsMap) {
+              if (!bodyOrItemsMap[i]) {
+                missingChildren[i] = true;
+              }
+            }
+          }
+          if (objs[path].remote && objs[path].remote.itemsMap) {
+            for (i in objs[path].remote.itemsMap) {
+              if (!bodyOrItemsMap[i]) {
+                missingChildren[i] = true;
+              }
+            }
+          }
+          for (i in bodyOrItemsMap) {
+            objs[path].remote.itemsMap[i] = true;
+          }
+        } else {
+          objs[path].remote.body = bodyOrItemsMap;
+          objs[path].remote.contentType = contentType;
+        }
+        objs[path] = this.autoMerge(objs[path]);
+        return {
+          toBeSaved: objs,
+          missingChildren: missingChildren
+        };
+      }.bind(this));
+    },
+    completePush: function(path, action, conflict, revision) {
+      return this.local.getNodes([path]).then(function(objs) {
+        if (conflict) {
+          if (!objs[path].remote || objs[path].remote.revision !== revision) {
+            objs[path].remote = {
+              revision: revision,
+              timestamp: this.now()
+            };
+          }
+          objs[path] = this.autoMerge(objs[path]);
+        } else {
+          objs[path].common = {
+            revision: revision,
+            timestamp: this.now()
+          };
+          if (action === 'put') {
+            objs[path].common.body = objs[path].push.body;
+            objs[path].common.contentType = objs[path].push.contentType;
+            if (objs[path].local.body === objs[path].push.body && objs[path].local.contentType === objs[path].push.contentType) {
+              delete objs[path].local;
+            }
+            delete objs[path].push;
+          } else if (action === 'delete') {
+            if (objs[path].local.body === false) {//successfully deleted and no new local changes since push; flush it.
+              objs[path] = undefined;
+            } else {
+              delete objs[path].push;
+            }
+          }
+        }
+        return this.local.setNodes(objs);
+      }.bind(this));
+    },
+    dealWithFailure: function(path, action, statusMeaning) {
+      return this.local.getNodes([path]).then(function(objs) {
+        if (objs[path]) {
+          delete objs[path].push;
+          return this.local.setNodes(objs);
+        }
+      }.bind(this));
+    },
+    interpretStatus: function(statusCode) {
+      var series = Math.floor(statusCode / 100);
+      return {
+        successful: (series === 2 || statusCode === 304 || statusCode === 412 || statusCode === 404),
+        conflict: (statusCode === 412),
+        unAuth: (statusCode === 401 || statusCode === 402 ||statusCode === 403),
+        notFound: (statusCode === 404)
+      }
+    },
+    handleResponse: function(path, action, status, bodyOrItemsMap, contentType, revision) {
+      console.log('handleResponse', path, action, status, bodyOrItemsMap, contentType, revision);
+      var statusMeaning = this.interpretStatus(status);
+      
+      if (statusMeaning.successful) {
+        if (action === 'get') {
+          if (statusMeaning.notFound) {
+            if (path.substr(-1) === '/') {
+              bodyOrItemsMap = {};
+            } else {
+              bodyOrItemsmap = false;
+            }
+          }
+          return this.completeFetch(path, bodyOrItemsMap, contentType, revision).then(function(dataFromFetch) {
+            if (path.substr(-1) === '/') {
+              if (this.corruptServerItemsMap(bodyOrItemsMap)) {
+                console.log('WARNING: discarding corrupt folder description from server for ' + path);
+                return false;
+              } else {
+                return this.markChildren(path, bodyOrItemsMap, dataFromFetch.toBeSaved, dataFromFetch.missingChildren).then(function() {
+                  return true;//task completed
+                });
+              }
+            } else {
+              return this.local.setNodes(objs).then(function() {
+                return true;//task completed
+              });
+            }
+          }.bind(this));
+        } else if (action === 'put') {
+          return this.completePush(path, action, statusMeaning.conflict, revision).then(function() {
+            return true;//task completed
+          });
+        } else if (action === 'delete') {
+          return this.completePush(path, action, statusMeaning.conflict, revision).then(function() {
+            return true;//task completed
+          });
+        } else {
+          throw new Error('cannot handle response for unknown action', action);
+        }
+      } else {
+        if (statusMeaning.unAuth) {
+          remoteStorage._emit('error', new RemoteStorage.Unauthorized());
+        }
+        return this.dealWithFailure(path, action, statusMeaning).then(function() {
+          return false;
+        });
+      }
+    },
+    numThreads: 1,
+    finishTask: function (obj) {
+      if(obj.action === undefined) {
+        delete this._running[obj.path];
+      } else {
+        obj.promise.then(function(status, bodyOrItemsMap, contentType, revision) {
+          return this.handleResponse(obj.path, obj.action, status, bodyOrItemsMap, contentType, revision);
+        }.bind(this)).then(function(completed) {
+          delete this._timeStarted[obj.path];
+          delete this._running[obj.path];
+          if (completed) {
+            if (this._tasks[obj.path]) {
+              for(i=0; i<this._tasks[obj.path].length; i++) {
+                this._tasks[obj.path][i]();
+              }
+              delete this._tasks[obj.path];
+            }
+          } else {
+          }
+          this._emit('req-done');
+          console.log('_running/_tasks', this._running, this._tasks);
+          if (Object.getOwnPropertyNames(this._tasks).length === 0 || this.stopped) {
+            this._emit('done');
+          } else {
+            //use a zero timeout to let the JavaScript runtime catch its breath
+            //(and hopefully force an IndexedDB auto-commit?):
+            setTimeout(function() {
+              this.doTasks();
+            }.bind(this), 0);
+          }
+        }.bind(this),
+        function(err) {
+          this.remote.online = false;
+          delete this._timeStarted[obj.path];
+          delete this._running[obj.path];
+          this._emit('req-done');
+          if (!this.stopped) {
+            setTimeout(function() {
+              this.doTasks();
+            }.bind(this), 0);
+          }
+        }.bind(this));
+      }
+    },
+    doTasks: function() {
+      var numToHave, numAdded = 0, numToAdd;
+      if (this.remote.connected) {
+        if (this.remote.online) {
+          numToHave = this.numThreads;
+        } else {
+          numToHave = 1;
+        }
+      } else {
+        numToHave = 0;
+      }
+      numToAdd = numToHave - Object.getOwnPropertyNames(this._running).length;
+      if (numToAdd <= 0) {
+        return true;
+      }
+      for (path in this._tasks) {
+        if (!this._running[path]) {
+          this._timeStarted = this.now();
+          this._running[path] = this.doTask(path);
+          this._running[path].then(this.finishTask.bind(this));
+          numAdded++;
+          if (numAdded >= numToAdd) {
+            return true;
+          }
+        }
+      }
+      return (numAdded >= numToAdd);
+    },
+    findTasks: function() {
+      return this.checkDiffs().then(function(numDiffs) {
+        if (numDiffs) {
+          promise = promising();
+          promise.fulfill();
+          return promise;
+        } else {
+          return this.checkRefresh();
+        }
+      }.bind(this), function(err) {
+        throw err;
+      });
+    },
+    addTask: function(path, cb) {
+      if (!this._tasks[path]) {
+        this._tasks[path] = [];
+      }
+      if (typeof(cb) === 'function') {
+        this._tasks[path].push(cb);
+      }
+    },
+
     /**
      * Method: sync
      **/
-    sync: function(remote, local, path) {
-      return pushChanges(remote, local, path).
-        then(function() {
-          return synchronize(remote, local, path);
+    sync: function() {
+      var promise = promising();
+      if (!this.doTasks()) {
+        return this.findTasks().then(function() {
+          try {
+            this.doTasks();
+          } catch(e) {
+            console.log('doTasks error', e);
+          }
+        }.bind(this), function(err) {
+          console.log('sync error', err);
+          throw new Error('local cache unavailable');
         });
-    },
-    /**
-     * Method: syncTree
-     **/
-    syncTree: function(remote, local, path) {
-      return synchronize(remote, local, path, {
-        data: false
-      });
+      } else {
+        return promising().fulfill();
+      }
     }
   };
 
@@ -4432,6 +4875,7 @@ Math.uuid = function (len, radix) {
   RemoteStorage.prototype.getSyncInterval = function() {
     return syncInterval;
   };
+
   /**
    * Method: setSyncInterval
    *
@@ -4442,7 +4886,7 @@ Math.uuid = function (len, radix) {
    *
    */
   RemoteStorage.prototype.setSyncInterval = function(interval) {
-    if(typeof(interval) !== 'number') {
+    if (typeof(interval) !== 'number') {
       throw interval + " is not a valid sync interval";
     }
     syncInterval = parseInt(interval, 10);
@@ -4465,83 +4909,31 @@ Math.uuid = function (len, radix) {
 
   SyncError.prototype = Object.create(Error.prototype);
 
-  RemoteStorage.prototype.sync = function() {
-    if (! (this.local && this.caching)) {
-      throw "Sync requires 'local' and 'caching'!";
-    }
-    if (! this.remote.connected) {
-      return promising().fulfill();
-    }
-    var roots = this.caching.rootPaths.slice(0);
-    var n = roots.length, i = 0;
-    var aborted = false;
-    var rs = this;
-
-    return promising(function(promise) {
-      if (n === 0) {
-        rs._emit('sync-busy');
-        rs._emit('sync-done');
-        return promise.fulfill();
-      }
-      rs._emit('sync-busy');
-      var path;
-      while((path = roots.shift())) {
-        (function (path) {
-          var cachingState = rs.caching.get(path);
-          RemoteStorage.Sync.sync(rs.remote, rs.local, path, cachingState).
-            then(function() {
-              if(!cachingState.ready) {
-                cachingState.ready = true;
-                rs.caching.set(path, cachingState);
-              }
-              if (aborted) { return; }
-              i++;
-              if (n === i) {
-                rs._emit('sync-done');
-                promise.fulfill();
-              }
-            }, function(error) {
-              rs.caching.set(path, {data: true, ready: true});
-              console.error('syncing', path, 'failed:', error);
-              if (aborted) { return; }
-              aborted = true;
-              rs._emit('sync-done');
-              if (error instanceof RemoteStorage.Unauthorized) {
-                rs._emit('error', error);
-              } else {
-                rs._emit('error', new SyncError(error));
-              }
-              promise.reject(error);
-            });
-        })(path);
-      }
-    });
-  };
-
   RemoteStorage.SyncError = SyncError;
 
   RemoteStorage.prototype.syncCycle = function() {
-    this.sync().then(function() {
-      this.stopSync();
-      this._syncTimer = setTimeout(this.syncCycle.bind(this), this.getSyncInterval());
-    }.bind(this),
-    function(e) {
-      console.log('sync error, retrying');
-      this.stopSync();
-      this._syncTimer = setTimeout(this.syncCycle.bind(this), this.getSyncInterval());
+    if (this.sync.stopped) {
+      return;
+    }  
+    this.sync.on('done', function() {
+      this._syncTimer = setTimeout(this.sync.sync().bind(this.sync), this.getSyncInterval());
     }.bind(this));
+    this.sync.sync();
   };
 
   RemoteStorage.prototype.stopSync = function() {
-    if (this._syncTimer) {
-      clearTimeout(this._syncTimer);
-      delete this._syncTimer;
-    }
-  };
+    this.sync.stopped = true;
+ };
 
   var syncCycleCb;
   RemoteStorage.Sync._rs_init = function(remoteStorage) {
     syncCycleCb = function() {
+      if(!remoteStorage.sync) {
+        //call this now that all other modules are also ready:
+        remoteStorage.sync = new RemoteStorage.Sync(
+            remoteStorage.local, remoteStorage.remote, remoteStorage.access,
+            remoteStorage.caching);
+      }  
       remoteStorage.syncCycle();
     };
     remoteStorage.on('ready', syncCycleCb);
@@ -4559,27 +4951,290 @@ Math.uuid = function (len, radix) {
 (function() {
   /**
    * Class: cachinglayer
+   *
+   * local storages should implement this.getNodes, this.setNodes, and this.forAllDocuments
+   * the rest is blended in here to create a GPD (get/put/delete) interface
+   * which the baseclient can talk to.
+   * the objects itself should only expose getNodes, setNodes, and forAllNodes.
    */
-  var methods = {
 
-    _createConflictEvent: function(path, attributes) {
-      var event = { path: path };
-      for(var key in attributes) {
-        event[key] = attributes[key];
+  var  _isFolder = function(path) {
+      return path.substr(-1) === '/';
+    },
+    
+    _isDocument = function(path) {
+      return path.substr(-1) !== '/';
+    },
+    
+    _deepClone = function(obj) {
+      return JSON.parse(JSON.stringify(obj));
+    },
+    
+    _equal = function(obj1, obj2) {
+      return JSON.stringify(obj1) === JSON.stringify(obj2);
+    },
+    
+    _getLatest = function(node) {
+      if (typeof(node) !== 'object' || typeof(node.path) != 'string') {
+        return;
       }
-
-      event.resolve = function(resolution) {
-        if (resolution === 'remote' || resolution === 'local') {
-          attributes.resolution = resolution;
-          this._recordChange(path, { conflict: attributes });
-        } else {
-          throw new Error("Invalid resolution: " + resolution);
+      if (_isFolder(node.path)) {
+        if (node.local && node.local.itemsMap) {
+          return node.local;
         }
-      }.bind(this);
+        if (node.common && node.common.itemsMap) {
+          return node.common;
+        }
+      } else {
+        if (node.local && node.local.body && node.local.contentType) {
+          return node.local;
+        }
+        if (node.common && node.common.body && node.common.contentType) {
+          return node.common;
+        }
+        //migration code; once all apps use this version of the lib, we can publish clean-up code
+        //that migrates over any old-format data, and stop supporting it. for now, new apps will
+        //support data in both formats, thanks to this:
+        if (node.body && node.contentType) {
+          return {
+            body: node.body,
+            contentType: node.contentType
+          };
+        }
+      }
+    },
 
-      return event;
+    _nodesFromRoot = function(path) {
+      var parts, ret = [path];
+      if(path.substr(-1) === '/') {
+        //remove trailing slash if present,
+        //so it's not counted as a path level
+        path = path.substring(0, path.length-1);
+      }
+      parts = path.split('/');
+      while(parts.length > 1) {
+        parts.pop();
+        ret.push(parts.join('/')+'/');
+      }
+      return ret;
+    },
+    _makeNode = function(path, now) {
+      var ret = {
+        path: path,
+        common: {
+          timestamp: now
+        }
+      };
+      if(_isFolder(path)) {
+        ret.common.itemsMap = {};
+      }
+      return ret;
+    };
+    
+  var methods = {
+    //GPD interface:
+    get: function(path, maxAge) {
+      console.log('get', path, maxAge);
+      var promise = promising();
+      this.getNodes([path]).then(function(objs) {
+        var latest = _getLatest(objs[path]);
+//        console.log('maxAge', maxAge, (typeof(maxAge) === 'number'),
+//             !latest,
+//             !latest.timestamp,
+//             ((new Date().getTime()) - latest.timestamp > maxAge));
+        if ((typeof(maxAge) === 'number') && (
+             !latest ||
+             !latest.timestamp ||
+             ((new Date().getTime()) - latest.timestamp > maxAge))) {
+          remoteStorage.sync.queueGetRequest(path, promise);
+          return promise;
+        }
+        
+        if (latest) {
+            promise.fulfill(200, latest.body || latest.itemsMap, latest.contentType);
+        } else {
+          promise.fulfill(404);
+        }       
+      }.bind(this), function(err) {
+        promise.reject(err);
+      }.bind(this));
+      return promise;
+    },
+    _updateNodes: function(nodePaths, cb) {
+       return this.getNodes(nodePaths).then(function(objs) {
+        var copyObjs = _deepClone(objs);
+        objs = cb(objs);
+        console.log('done with cb', objs);
+        for (i in objs) {
+          if (_equal(objs[i], copyObjs[i])) {
+            delete objs[i];
+          } else if(_isDocument(i)) {
+            this._emit('change', {
+              path: i,
+              origin: 'window',
+              oldValue: objs[i].local.previousBody,
+              newValue: objs[i].local.body,
+              oldContentType: objs[i].local.previousContentType,
+              newContentType: objs[i].local.contentType
+            });
+            delete objs[i].local.previousBody;
+            delete objs[i].local.previousContentType;
+          }
+        }
+        return this.setNodes(objs).then(function() {
+          console.log('setNodes done', objs);
+          return 200;
+        }).then(function(status) {
+          var i;
+          if (this.diffHandler) {
+            for (i in objs) {
+              if (i.substr(-1) !== '/') {
+                console.log('calling diffHandler', i);
+                this.diffHandler(i);
+              }
+            }
+          }
+          return status;
+        }.bind(this));
+      }.bind(this),
+      function(err) {
+        throw(err);
+      });
+    },
+    put: function(path, body, contentType) {
+      var i, now = new Date().getTime(), pathNodes = _nodesFromRoot(path), previous;
+      return this._updateNodes(pathNodes, function(objs) {
+        for (i=0; i<pathNodes.length; i++) {
+          if (!objs[pathNodes[i]]) {
+            objs[pathNodes[i]] = _makeNode(pathNodes[i], now);
+          }
+          if (i === 0) {
+            //save the document itself
+            previous = _getLatest(objs[pathNodes[i]]);
+            objs[pathNodes[i]].local = {
+              previousBody: (previous ? previous.body : undefined),
+              previousContentType: (previous ? previous.contentType : undefined),
+              body: body,
+              contentType: contentType,
+              timestamp: now
+            };
+          } else {
+            //add it to all parents
+            itemName = pathNodes[i-1].substring(pathNodes[i].length);
+            if (!objs[pathNodes[i]].local) {
+              objs[pathNodes[i]].local = _deepClone(objs[pathNodes[i]].common);
+            }
+            objs[pathNodes[i]].local.itemsMap[itemName] = true;
+          }
+        }
+        return objs;
+      });
+    },
+    delete: function(path) {
+      var pathNodes = _nodesFromRoot(path);
+      return this._updateNodes(pathNodes, function(objs) {
+        var i, now = new Date().getTime();
+        for (i=0; i<pathNodes.length; i++) {
+          if (!objs[pathNodes[i]]) {
+            throw new Error('cannot delete a non-existing node; retrieve its parent folder first; missing node: '+pathNodes[i]);
+          }
+          if(i === 0) {
+            //delete the document itself
+            objs[path].local = {
+              body: false,
+              timestamp: now
+            };
+          } else {
+            //remove it from all parents
+            itemName = pathNodes[i-1].substring(pathNodes[i].length);
+            if (!objs[pathNodes[i]].local) {
+              objs[pathNodes[i]].local = _deepClone(objs[pathNodes[i]].common);
+            }
+            delete objs[pathNodes[i]].local.itemsMap[itemName];
+            if (Object.getOwnPropertyNames(objs[pathNodes[i]].local.itemsMap).length) {
+              //this folder still has other items, don't remove any further ancestors
+              break;
+            }
+          }
+        }
+        return objs;
+      });
+    },
+    _getAllDescendentPaths: function(path) {
+      if (_isFolder(path)) {
+        return this.getNodes([path]).then(function(objs) {
+          var i, pending=0, allPaths = [path], latest = _getLatest(objs[path]), promise = promising();
+          for (i in latest.itemsMap) {
+            pending++;
+            var subPromise = this._getAllDescendentPaths(path+i)
+            subPromise.then(function(paths) {
+              var j;
+              pending--;
+              for (j=0; j<paths.length; j++) {
+                allPaths.push(paths[j]);
+              }
+              if (pending === 0) {
+                promise.fulfill(allPaths);
+              }
+            });
+          }
+          return promise;
+        }.bind(this));
+      } else {
+        return promising().fulfill([path]);
+      }
+    },
+    flush: function(path) {
+      return this._getAllDescendentPaths(path).then(function(paths) {
+        return this.getNodes(paths);
+      }.bind(this)).then(function(objs) {
+        var i;
+        for (i in objs) {
+          if (objs[i] && objs[i].common && objs[i].local) {
+            this._emit('change', {
+              path: objs[i].path,
+              origin: 'local',
+              oldValue: (objs[i].local.body === false ? undefined : objs[i].local.body),
+              newValue: (objs[i].common.body === false ? undefined : objs[i].common.body)
+            });
+          }
+          objs[i] = undefined;
+        }
+        return this.setNodes(objs);
+      }.bind(this));
+    },
+    fireInitial: function() {
+      this.forAllNodes(function(node) {
+        var latest;
+        if (_isDocument(node.path)) {
+          latest = _getLatest(node);
+          if (latest) {
+            this._emit('change', {
+              path: node.path,
+              origin: 'local',
+              oldValue: undefined,
+              oldContentType: undefined,
+              newValue: latest.body,
+              newContentType: latest.contentType
+            });
+          }
+        }
+      }.bind(this));
+    },
+    onDiff: function(setOnDiff) {
+      this.diffHandler = setOnDiff;
+    },
+    _getInternals: function() {
+      return {
+        _isFolder: _isFolder,
+        _isDocument: _isDocument,
+        _deepClone: _deepClone,
+        _equal: _equal,
+        _getLatest: _getLatest,
+        _nodesFromRoot: _nodesFromRoot,
+        _makeNode: _makeNode
+      };
     }
-
   };
 
   /**
@@ -4597,7 +5252,7 @@ Math.uuid = function (len, radix) {
    *   (end code)
    */
   RemoteStorage.cachingLayer = function(object) {
-    for(var key in methods) {
+    for (var key in methods) {
       object[key] = methods[key];
     }
   };
@@ -4629,117 +5284,27 @@ Math.uuid = function (len, radix) {
    *     - Usually this is accessible via "remoteStorage.local"
    *     - #get() takes a path and returns a promise.
    *     - #put() takes a path, body and contentType and also returns a promise.
-   *       In addition it also takes a 'incoming' flag, which indicates that the
-   *       change is not fresh, but synchronized from remote.
-   *     - #delete() takes a path and also returns a promise. It also supports
-   *       the 'incoming' flag described for #put().
+   *     - #delete() takes a path and also returns a promise.
    *     - #on('change', ...) events, being fired whenever something changes in
    *       the storage. Change events roughly follow the StorageEvent pattern.
    *       They have "oldValue" and "newValue" properties, which can be used to
    *       distinguish create/update/delete operations and analyze changes in
    *       change handlers. In addition they carry a "origin" property, which
    *       is either "window", "local", or "remote". "remote" events are fired
-   *       whenever the "incoming" flag is passed to #put() or #delete(). This
-   *       is usually done by RemoteStorage.Sync.
+   *       whenever a change comes in from RemoteStorage.Sync. In the future,
+   *       "device" origin events will also be fired for changes happening in
+   *       other windows on the same device.
    *
-   *   The revision interface (also on RemoteStorage.IndexedDB object):
-   *     - #_setRevision(path, revision) sets the current revision for the given
-   *       path. Revisions are only generated by the remotestorage server, so
-   *       this is usually done from #put on an incoming change or from
-   *       #putDirectory.
-   *     - #_setRevisions(revisions) takes path/revision pairs in the form:
-   *       [[path1, rev1], [path2, rev2], ...] and updates all revisions in a
-   *       single transaction.
-   *     - #getRevision(path) returns the currently stored revision for the given
-   *       path.
+   *   The sync interface (also on RemoteStorage.IndexedDB object):
+   *     - #getNodes([paths]) returns the requested nodes in a promise.
+   *     - #setNodes(map) stores all the nodes given in the (path -> node) map.
    *
-   *   The changes interface (also on RemoteStorage.IndexedDB object):
-   *     - Used to record local changes between sync cycles.
-   *     - Changes are stored in a separate ObjectStore called "changes".
-   *     - #_recordChange() records a change and is called by #put() and #delete(),
-   *       given the "incoming" flag evaluates to false. It is private and should
-   *       never be used from the outside.
-   *     - #changesBelow() takes a path and returns a promise that will be fulfilled
-   *       with an Array of changes that are pending for the given path or below.
-   *       This is usually done in a sync cycle to push out pending changes.
-   *     - #clearChange removes the change for a given path. This is usually done
-   *       RemoteStorage.Sync once a change has successfully been pushed out.
-   *     - #setConflict sets conflict attributes on a change. It also fires the
-   *       "conflict" event.
-   *     - #on('conflict', ...) event. Conflict events usually have the following
-   *       attributes: path, localAction and remoteAction. Both actions are either
-   *       "PUT" or "DELETE". They also bring a "resolve" method, which can be
-   *       called with either of the strings "remote" and "local" to mark the
-   *       conflict as resolved. The actual resolution will usually take place in
-   *       the next sync cycle.
    */
 
   var RS = RemoteStorage;
 
   var DEFAULT_DB_NAME = 'remotestorage';
   var DEFAULT_DB;
-
-  function keepDirNode(node) {
-    return Object.keys(node.body).length > 0 ||
-      Object.keys(node.cached).length > 0;
-  }
-
-  function removeFromParent(nodes, path, key) {
-    var parts = path.match(/^(.*\/)([^\/]+\/?)$/);
-    if (parts) {
-      var dirname = parts[1], basename = parts[2];
-      nodes.get(dirname).onsuccess = function(evt) {
-        var node = evt.target.result;
-        if (!node) {//attempt to remove something from a non-existing directory
-          return;
-        }
-        delete node[key][basename];
-        if (keepDirNode(node)) {
-          nodes.put(node);
-        } else {
-          nodes.delete(node.path).onsuccess = function() {
-            if (dirname !== '/') {
-              removeFromParent(nodes, dirname, key);
-            }
-          };
-        }
-      };
-    }
-  }
-
-  function makeNode(path) {
-    var node = { path: path };
-    if (path[path.length - 1] === '/') {
-      node.body = {};
-      node.cached = {};
-      node.contentType = 'application/json';
-    }
-    return node;
-  }
-
-  function addToParent(nodes, path, key, revision) {
-    var parts = path.match(/^(.*\/)([^\/]+\/?)$/);
-    if (parts) {
-      var dirname = parts[1], basename = parts[2];
-      nodes.get(dirname).onsuccess = function(evt) {
-        var node = evt.target.result || makeNode(dirname);
-        node[key][basename] = revision || true;
-        nodes.put(node).onsuccess = function() {
-          if (dirname !== '/') {
-            addToParent(nodes, dirname, key, true);
-          }
-        };
-      };
-    }
-  }
-
-  function addDirectoryCacheNode(nodes, path, body) {
-    nodes.get(path).onsuccess = function(evt) {
-      var node = evt.target.result || makeNode(path);
-      node['body'] = body;
-      nodes.put(node);
-    };
-  }
 
   RS.IndexedDB = function(database) {
     this.db = database || DEFAULT_DB;
@@ -4748,197 +5313,47 @@ Math.uuid = function (len, radix) {
       return undefined;
     }
     RS.cachingLayer(this);
-    RS.eventHandling(this, 'change', 'conflict');
+    RS.eventHandling(this, 'change');
   };
 
   RS.IndexedDB.prototype = {
 
-    get: function(path) {
+    getNodes: function(paths) {
       var promise = promising();
       var transaction = this.db.transaction(['nodes'], 'readonly');
       var nodes = transaction.objectStore('nodes');
-      var nodeReq = nodes.get(path);
-      var node;
-
-      nodeReq.onsuccess = function() {
-        node = nodeReq.result;
-      };
-
-      transaction.oncomplete = function() {
-        if (node) {
-          promise.fulfill(200, node.body, node.contentType, node.revision);
-        } else {
-          promise.fulfill(404);
-        }
-      };
-
-      transaction.onerror = transaction.onabort = promise.reject;
-      return promise;
-    },
-
-    put: function(path, body, contentType, incoming, revision) {
-      var promise = promising();
-      if (path[path.length - 1] === '/') { throw "Bad: don't PUT folders"; }
-      var transaction = this.db.transaction(['nodes'], 'readwrite');
-      var nodes = transaction.objectStore('nodes');
-      var oldNode;
-      var done;
-
-      nodes.get(path).onsuccess = function(evt) {
-        try {
-          oldNode = evt.target.result;
-          var node = {
-            path: path,
-            contentType: contentType,
-            body: body
+      var ret = {}, i, nodeReq;
+      for (i=0; i<paths.length; i++) {
+        (function(captureI) {
+          nodes.get(paths[captureI]).onsuccess = function(evt) {
+            ret[paths[captureI]] = evt.target.result;
           };
-          nodes.put(node);
-        } catch(e) {
-          if (typeof(done) === 'undefined') {
-            done = true;
-            promise.reject(e);
-          }
-        }
+        })(i);
+      }
+      
+      transaction.oncomplete = function() {
+        promise.fulfill(ret);
       };
 
-      transaction.oncomplete = function() {
-        this._emit('change', {
-          path: path,
-          origin: incoming ? 'remote' : 'window',
-          oldValue: oldNode ? oldNode.body : undefined,
-          newValue: body
-        });
-        if (!incoming) {
-          this._recordChange(path, { action: 'PUT', revision: oldNode ? oldNode.revision : undefined });
-        }
-        if (typeof(done) === 'undefined') {
-          done = true;
-          if (incoming) {
-            this._setRevision(path, revision).then(function(){
-              promise.fulfill(200);
-            });
-          } else {
-            promise.fulfill(200);
-          }
-        }
-      }.bind(this);
-
       transaction.onerror = transaction.onabort = promise.reject;
-
       return promise;
     },
 
-    putDirectory: function(path, body, revision) {
+    setNodes: function(objs) {
       var promise = promising();
       var transaction = this.db.transaction(['nodes'], 'readwrite');
       var nodes = transaction.objectStore('nodes');
-
-      addDirectoryCacheNode(nodes, path, body);
-      addToParent(nodes, path, 'body');
-
-      transaction.oncomplete = function() {
-        this._setRevision(path, revision).then(promise.fulfill);
-      }.bind(this);
-
-      transaction.onerror = transaction.onabort = promise.reject;
-
-      return promise;
-    },
-
-    delete: function(path, incoming) {
-      var promise = promising();
-      if (path[path.length - 1] === '/') { throw "Bad: don't DELETE folders"; }
-      var transaction = this.db.transaction(['nodes'], 'readwrite');
-      var nodes = transaction.objectStore('nodes');
-      var oldNode;
-
-      nodes.get(path).onsuccess = function(evt) {
-        oldNode = evt.target.result;
-        nodes.delete(path).onsuccess = function() {
-          removeFromParent(nodes, path, 'cached', incoming);
-        };
-      };
-
-      transaction.oncomplete = function() {
-        if (oldNode) {
-          this._emit('change', {
-            path: path,
-            origin: incoming ? 'remote' : 'window',
-            oldValue: oldNode.body,
-            newValue: undefined
-          });
-        }
-        if (! incoming) {
-          this._recordChange(path, { action: 'DELETE', revision: oldNode ? oldNode.revision : undefined });
-        }
-        promise.fulfill(200);
-      }.bind(this);
-
-      transaction.onerror = transaction.onabort = promise.reject;
-      return promise;
-    },
-
-    _setRevision: function(path, revision) {
-      return this._setRevisions([[path, revision]]);
-    },
-
-    _setRevisions: function(revs) {
-      var promise = promising();
-      var transaction = this.db.transaction(['nodes'], 'readwrite');
-
-      revs.forEach(function(rev) {
-        var nodes = transaction.objectStore('nodes');
-        nodes.get(rev[0]).onsuccess = function(event) {
-          var node = event.target.result || makeNode(rev[0]);
-          node.revision = rev[1];
-          nodes.put(node).onsuccess = function() {
-            addToParent(nodes, rev[0], 'cached', rev[1]);
-          };
-        };
-      });
-
+      var i, nodeReq;
+      for (i in objs) {
+        console.log('putting', objs[i]);
+        nodes.put(objs[i]);
+      }
+      
       transaction.oncomplete = function() {
         promise.fulfill();
       };
 
       transaction.onerror = transaction.onabort = promise.reject;
-      return promise;
-    },
-
-    getRevision: function(path) {
-      var promise = promising();
-      var transaction = this.db.transaction(['nodes'], 'readonly');
-      var rev;
-
-      transaction.objectStore('nodes').
-        get(path).onsuccess = function(evt) {
-          if (evt.target.result) {
-            rev = evt.target.result.revision;
-          }
-        };
-
-      transaction.oncomplete = function() {
-        promise.fulfill(rev);
-      };
-
-      transaction.onerror = transaction.onabort = promise.reject;
-      return promise;
-    },
-
-    // TODO this is not used yet
-    getCached: function(path) {
-      if (path[path.length - 1] !== '/') {
-        return this.get(path);
-      }
-      var promise = promising();
-      var transaction = this.db.transaction(['nodes'], 'readonly');
-      var nodes = transaction.objectStore('nodes');
-
-      nodes.get(path).onsuccess = function(evt) {
-        var node = evt.target.result || {};
-        promise.fulfill(200, node.cached, node.contentType, node.revision);
-      };
-
       return promise;
     },
 
@@ -4955,95 +5370,20 @@ Math.uuid = function (len, radix) {
       });
     },
 
-    fireInitial: function() {
+    forAllNodes: function(cb) {
+      var promise = promising();
       var transaction = this.db.transaction(['nodes'], 'readonly');
       var cursorReq = transaction.objectStore('nodes').openCursor();
       cursorReq.onsuccess = function(evt) {
         var cursor = evt.target.result;
         if (cursor) {
-          var path = cursor.key;
-          if (path.substr(-1) !== '/') {
-            this._emit('change', {
-              path: path,
-              origin: 'local',
-              oldValue: undefined,
-              newValue: cursor.value.body
-            });
-          }
+          cb(cursor.value);
           cursor.continue();
-        }
-      }.bind(this);
-    },
-
-    _recordChange: function(path, attributes) {
-      var promise = promising();
-      var transaction = this.db.transaction(['changes'], 'readwrite');
-      var changes = transaction.objectStore('changes');
-      var change;
-
-      changes.get(path).onsuccess = function(evt) {
-        change = evt.target.result || {};
-        change.path = path;
-        for(var key in attributes) {
-          change[key] = attributes[key];
-        }
-        changes.put(change);
-      };
-
-      transaction.oncomplete = promise.fulfill;
-      transaction.onerror = transaction.onabort = promise.reject;
-      return promise;
-    },
-
-    clearChange: function(path) {
-      var promise = promising();
-      var transaction = this.db.transaction(['changes'], 'readwrite');
-      var changes = transaction.objectStore('changes');
-      changes.delete(path);
-
-      transaction.oncomplete = function() {
-        promise.fulfill();
-      };
-
-      return promise;
-    },
-
-    changesBelow: function(path) {
-      var promise = promising();
-      var transaction = this.db.transaction(['changes'], 'readonly');
-      var cursorReq = transaction.objectStore('changes').
-        openCursor(IDBKeyRange.lowerBound(path));
-      var pl = path.length;
-      var changes = [];
-
-      cursorReq.onsuccess = function() {
-        var cursor = cursorReq.result;
-        if (cursor) {
-          if (cursor.key.substr(0, pl) === path) {
-            changes.push(cursor.value);
-            cursor.continue();
-          }
+        } else {
+          promise.fulfill();
         }
       };
-
-      transaction.oncomplete = function() {
-        promise.fulfill(changes);
-      };
-
       return promise;
-    },
-
-    setConflict: function(path, attributes) {
-      var event = this._createConflictEvent(path, attributes);
-      this._recordChange(path, { conflict: attributes }).
-        then(function() {
-          // fire conflict once conflict has been recorded.
-          if (this._handlers.conflict.length > 0) {
-            this._emit('conflict', event);
-          } else {
-            setTimeout(function() { event.resolve('remote'); }, 0);
-          }
-        }.bind(this));
     },
 
     closeDB: function() {
@@ -5098,7 +5438,7 @@ Math.uuid = function (len, radix) {
   RS.IndexedDB._rs_init = function(remoteStorage) {
     var promise = promising();
     RS.IndexedDB.open(DEFAULT_DB_NAME, function(err, db) {
-      if(err) {
+      if (err) {
         promise.reject(err);
       } else {
         DEFAULT_DB = db;
@@ -5136,18 +5476,8 @@ Math.uuid = function (len, radix) {
 
   RemoteStorage.LocalStorage = function() {
     RemoteStorage.cachingLayer(this);
-    RemoteStorage.eventHandling(this, 'change', 'conflict');
+    RemoteStorage.eventHandling(this, 'change');
   };
-
-  function makeNode(path) {
-    var node = { path: path };
-    if (path[path.length - 1] === '/') {
-      node.body = {};
-      node.cached = {};
-      node.contentType = 'application/json';
-    }
-    return node;
-  }
 
   function b64ToUint6 (nChr) {
     return nChr > 64 && nChr < 91 ?
@@ -5188,195 +5518,43 @@ Math.uuid = function (len, radix) {
   }
 
   RemoteStorage.LocalStorage.prototype = {
-    toBase64: function(data){
-      var arr = new Uint8Array(data);
-      var str = '';
-      for(var i = 0; i < arr.length; i++) {
-        //atob(btoa(String.fromCharCode(arr[0]))).charCodeAt(0)
-        str+=String.fromCharCode(arr[i]);
-      }
-      return btoa(str);
-    },
-
-    toArrayBuffer: base64DecToArr,
-
-    put: function(path, body, contentType, incoming, revision) {
-      var oldNode = this._get(path);
-      if (isBinary(contentType)){
-        body = this.toBase64(body);
-      }
-      var node = {
-        path: path,
-        contentType: contentType,
-        body: body
-      };
-      localStorage[NODES_PREFIX + path] = JSON.stringify(node);
-      this._emit('change', {
-        path: path,
-        origin: incoming ? 'remote' : 'window',
-        oldValue: oldNode ? oldNode.body : undefined,
-        newValue: body
-      });
-      if (incoming) {
-        this._setRevision(path, revision);
-      }
-      if (!incoming) {
-        this._recordChange(path, { action: 'PUT' });
-      }
-      return promising().fulfill(200);
-    },
-
-    putDirectory: function(path, body, revision) {
-      this._addDirectoryCacheNode(path, body);
-      this._addToParent(path, 'body');
-      this._setRevision(path, revision);
-      return promising().fulfill();
-    },
-
-    get: function(path) {
-      var node = this._get(path);
-      if (node) {
-        if (isBinary(node.contentType)){
-          node.body = this.toArrayBuffer(node.body);
-        }
-        return promising().fulfill(200, node.body, node.contentType, node.revision);
-      } else {
-        return promising().fulfill(404);
-      }
-    },
-
-    'delete': function(path, incoming) {
-      var oldNode = this._get(path);
-      delete localStorage[NODES_PREFIX + path];
-      this._removeFromParent(path);
-      if (oldNode) {
-        this._emit('change', {
-          path: path,
-          origin: incoming ? 'remote' : 'window',
-          oldValue: oldNode.body,
-          newValue: undefined
-        });
-      }
-      if (! incoming) {
-        this._recordChange(path, { action: 'DELETE' });
-      }
-      return promising().fulfill(200);
-    },
-
-    _setRevision: function(path, revision) {
-      var node = this._get(path) || makeNode(path);
-      node.revision = revision;
-      localStorage[NODES_PREFIX + path] = JSON.stringify(node);
-      this._addToParent(path, 'cached', revision);
-      return promising().fulfill();
-    },
-
-    getRevision: function(path) {
-      var node = this._get(path);
-      return promising.fulfill(node ? node.revision : undefined);
-    },
-
-    _get: function(path) {
-      var node;
-      try {
-        node = JSON.parse(localStorage[NODES_PREFIX + path]);
-      } catch(e) { /* ignored */ }
-      return node;
-    },
-
-    _recordChange: function(path, attributes) {
-      var change;
-      try {
-        change = JSON.parse(localStorage[CHANGES_PREFIX + path]);
-      } catch(e) {
-        change = {};
-      }
-      for(var key in attributes) {
-        change[key] = attributes[key];
-      }
-      change.path = path;
-      localStorage[CHANGES_PREFIX + path] = JSON.stringify(change);
-    },
-
-    clearChange: function(path) {
-      delete localStorage[CHANGES_PREFIX + path];
-      return promising().fulfill();
-    },
-
-    changesBelow: function(path) {
-      var changes = [];
-      var kl = localStorage.length;
-      var prefix = CHANGES_PREFIX + path, pl = prefix.length;
-      for(var i=0;i<kl;i++) {
-        var key = localStorage.key(i);
-        if (key.substr(0, pl) === prefix) {
-          changes.push(JSON.parse(localStorage[key]));
+    getNodes: function(paths) {
+      var i, ret = {}, promise = promising();
+      for(i=0; i<paths.length; i++) {
+        try {
+          ret[paths[i]] = JSON.parse(localStorage[NODES_PREFIX+paths[i]]);
+        } catch(e) {
         }
       }
-      return promising().fulfill(changes);
+      promise.fulfill(ret);
+      return promise;
     },
 
-    setConflict: function(path, attributes) {
-      var event = this._createConflictEvent(path, attributes);
-      this._recordChange(path, { conflict: attributes });
-      this._emit('conflict', event);
-    },
-
-    _addToParent: function(path, key, revision) {
-      var parts = path.match(/^(.*\/)([^\/]+\/?)$/);
-      if (parts) {
-        var dirname = parts[1], basename = parts[2];
-        var node = this._get(dirname) || makeNode(dirname);
-        node[key][basename] = revision || true;
-        localStorage[NODES_PREFIX + dirname] = JSON.stringify(node);
-        if (dirname !== '/') {
-          this._addToParent(dirname, key, true);
-        }
+    setNodes: function(objs) {
+      var i, promise = promising();
+      for(i in objs) {
+        localStorage[NODES_PREFIX+i] = JSON.stringify(objs[i]);
       }
+      promise.fulfill();
+      return promise;
     },
 
-    _addDirectoryCacheNode: function(path, body) {
-      var node = this._get(path) || makeNode(path);
-      node.body = body;
-      localStorage[NODES_PREFIX + path] = JSON.stringify(node);
-    },
-
-    _removeFromParent: function(path) {
-      var parts = path.match(/^(.*\/)([^\/]+\/?)$/);
-      if (parts) {
-        var dirname = parts[1], basename = parts[2];
-        var node = this._get(dirname);
-        if (node) {
-          delete node.cached[basename];
-          if (Object.keys(node.cached).length > 0) {
-            localStorage[NODES_PREFIX + dirname] = JSON.stringify(node);
-          } else {
-            delete localStorage[NODES_PREFIX + dirname];
-            if (dirname !== '/') {
-              this._removeFromParent(dirname);
-            }
+    forAllNodes: function(cb) {
+      var i, node;
+      for(i=0; i<localStorage.length; i++) {
+        if(localStorage.key(i).substring(0, NODES_PREFIX.length) === NODES_PREFIX) {
+          try {
+            node = JSON.parse(localStorage[localStorage.key(i)]);
+          } catch(e) {
+            node = undefined;
+          }
+          if(node) {
+            cb(node);
           }
         }
       }
-    },
-
-    fireInitial: function() {
-      var l = localStorage.length, npl = NODES_PREFIX.length;
-      for(var i=0;i<l;i++) {
-        var key = localStorage.key(i);
-        if (key.substr(0, npl) === NODES_PREFIX) {
-          var path = key.substr(npl);
-          var node = this._get(path);
-          this._emit('change', {
-            path: path,
-            origin: 'local',
-            oldValue: undefined,
-            newValue: node.body
-          });
-        }
-      }
+      return promising().fulfill();
     }
-
   };
 
   RemoteStorage.LocalStorage._rs_init = function() {};
@@ -5389,7 +5567,7 @@ Math.uuid = function (len, radix) {
     var l = localStorage.length;
     var npl = NODES_PREFIX.length, cpl = CHANGES_PREFIX.length;
     var remove = [];
-    for(var i=0;i<l;i++) {
+    for (var i=0;i<l;i++) {
       var key = localStorage.key(i);
       if (key.substr(0, npl) === NODES_PREFIX ||
          key.substr(0, cpl) === CHANGES_PREFIX) {
@@ -5407,177 +5585,44 @@ Math.uuid = function (len, radix) {
 
 /** FILE: src/inmemorystorage.js **/
 (function(global) {
-  function makeNode(path) {
-    var node = { path: path };
-    if (path[path.length - 1] === '/') {
-      node.body = {};
-      node.cached = {};
-      node.contentType = 'application/json';
-    }
-    return node;
-  }
 
   RemoteStorage.InMemoryStorage = function(rs) {
     this.rs = rs;
     RemoteStorage.cachingLayer(this);
-    RemoteStorage.eventHandling(this, 'change', 'conflict');
+    console.log('registering events');
+    RemoteStorage.eventHandling(this, 'change');
     this._storage = {};
-    this._changes = {};
   };
 
   RemoteStorage.InMemoryStorage.prototype = {
-    get: function(path) {
-      var node = this._storage[path];
-      if (node) {
-        return promising().fulfill(200, node.body, node.contentType, node.revision);
-      } else {
-        return promising().fulfill(404);
+    getNodes: function(paths) {
+      var i, ret = {}, promise = promising();
+      for(i=0; i<paths.length; i++) {
+        ret[paths[i]] = this._storage[paths[i]];
       }
+      promise.fulfill(ret);
+      return promise;
     },
 
-    put: function(path, body, contentType, incoming, revision) {
-      var oldNode = this._storage[path];
-      var node = {
-        path: path,
-        contentType: contentType,
-        body: body
-      };
-      this._storage[path] = node;
-
-      this._emit('change', {
-        path: path,
-        origin: incoming ? 'remote' : 'window',
-        oldValue: oldNode ? oldNode.body : undefined,
-        newValue: body
-      });
-
-      if (incoming) {
-        this._setRevision(path, revision);
-      }
-      if (!incoming) {
-        this._recordChange(path, { action: 'PUT' });
-        // TODO why not set a revision?
-      }
-
-      return promising().fulfill(200);
-    },
-
-    putDirectory: function(path, body, revision) {
-      this._addDirectoryCacheNode(path, body);
-      this._addToParent(path, 'body');
-      this._setRevision(path, revision);
-      return promising().fulfill();
-    },
-
-    'delete': function(path, incoming) {
-      var oldNode = this._storage[path];
-      delete this._storage[path];
-      this._removeFromParent(path, 'cached');
-      if (!incoming) {
-        this._recordChange(path, { action: 'DELETE' });
-      }
-
-      if (oldNode) {
-        this._emit('change', {
-          path: path,
-          origin: incoming ? 'remote' : 'window',
-          oldValue: oldNode.body,
-          newValue: undefined
-        });
-      }
-      return promising().fulfill(200);
-    },
-
-    _addToParent: function(path, key, revision) {
-      var parts = path.match(/^(.*\/)([^\/]+\/?)$/);
-      if (parts) {
-        var storage = this._storage;
-        var dirname = parts[1], basename = parts[2];
-        var node = storage[dirname] || makeNode(dirname);
-        node[key][basename] = revision || true;
-        storage[dirname] = node;
-        if (dirname !== '/') {
-          this._addToParent(dirname, key, true);
+    setNodes: function(objs) {
+      var i, promise = promising();
+      for(i in objs) {
+        if(objs[i] === undefined) {
+          delete this._storage[i];
+        } else {
+          this._storage[i] = objs[i];
         }
       }
+      promise.fulfill();
+      return promise;
     },
 
-    _addDirectoryCacheNode: function(path, body) {
-      var storage = this._storage;
-      var node = storage[path] || makeNode(path);
-      node.body = body;
-      storage[path] = node;
-      return true;
-    },
-
-    _removeFromParent: function(path) {
-      var parts = path.match(/^(.*\/)([^\/]+\/?)$/);
-      if (parts) {
-        var storage = this._storage;
-        var dirname = parts[1], basename = parts[2];
-        var node = storage[dirname];
-        if (node) {
-          delete node.cached[basename];
-          if (Object.keys(node.cached).length === 0) {
-            delete storage[dirname];
-            if (dirname !== '/') {
-              this._removeFromParent(dirname);
-            }
-          }
-        }
+    forAllNodes: function(cb) {
+      var i;
+      for(i in this._storage) {
+        cb(this._storage[i]);
       }
-    },
-
-    _recordChange: function(path, attributes) {
-      var change = this._changes[path] || {};
-      for(var key in attributes) {
-        change[key] = attributes[key];
-      }
-      change.path = path;
-      this._changes[path] = change;
-    },
-
-    clearChange: function(path) {
-      delete this._changes[path];
       return promising().fulfill();
-    },
-
-    changesBelow: function(path) {
-      var changes = [];
-      var l = path.length;
-      for(var key in this._changes) {
-        if (key.substr(0,l) === path) {
-          changes.push(this._changes[key]);
-        }
-      }
-      return promising().fulfill(changes);
-    },
-
-    setConflict: function(path, attributes) {
-      var event = this._createConflictEvent(path, attributes);
-      this._recordChange(path, { conflict: attributes });
-      this._emit('conflict', event);
-    },
-
-    _setRevision: function(path, revision) {
-      var node = this._storage[path] || makeNode(path);
-      node.revision = revision;
-      this._storage[path] = node;
-      this._addToParent(path, 'cached', revision);
-      return promising().fulfill();
-    },
-
-    getRevision: function(path) {
-      var rev;
-      if (this._storage[path]) {
-        rev = this._storage[path].revision;
-      }
-      return promising().fulfill(rev);
-    },
-
-    fireInitial: function() {
-      // fireInital fires a change event for each item in the store
-      // inMemoryStorage is always empty on pageLoad
     }
   };
 
@@ -5705,7 +5750,7 @@ Math.uuid = function (len, radix) {
           tbody.appendChild(tr);
           renderRow(tr, path, contentType, revision);
           if (path[path.length - 1] === '/') {
-            for(var key in body) {
+            for (var key in body) {
               loadRow(path + key);
             }
           }
@@ -5848,7 +5893,7 @@ Math.uuid = function (len, radix) {
     extend: function(target) {
       var sources = Array.prototype.slice.call(arguments, 1);
       sources.forEach(function(source) {
-        for(var key in source) {
+        for (var key in source) {
           target[key] = source[key];
         }
       });
@@ -5866,7 +5911,7 @@ Math.uuid = function (len, radix) {
       var results = [], errors = [];
       function oneDone() {
         i++;
-        if(i === n) {
+        if (i === n) {
           promise.fulfill(results, errors);
         }
       }
@@ -5891,18 +5936,18 @@ Math.uuid = function (len, radix) {
       return promise;
     },
 
-    containingDir: function(path) {
-      var dir = path.replace(/[^\/]+\/?$/, '');
-      return dir === path ? null : dir;
+    containingFolder: function(path) {
+      var folder = path.replace(/[^\/]+\/?$/, '');
+      return folder === path ? null : folder;
     },
 
-    isDir: function(path) {
+    isFolder: function(path) {
       return path.substr(-1) === '/';
     },
 
     baseName: function(path) {
       var parts = path.split('/');
-      if (util.isDir(path)) {
+      if (util.isFolder(path)) {
         return parts[parts.length-2]+'/';
       } else {
         return parts[parts.length-1];
@@ -5910,7 +5955,7 @@ Math.uuid = function (len, radix) {
     },
 
     bindAll: function(object) {
-      for(var key in this) {
+      for (var key in this) {
         if (typeof(object[key]) === 'function') {
           object[key] = object[key].bind(object);
         }
@@ -5951,7 +5996,7 @@ Math.uuid = function (len, radix) {
   }
 
   function metaTitleFromFileName(filename) {
-    if(filename.substr(-1) === '/') {
+    if (filename.substr(-1) === '/') {
       filename = filename.substr(0, filename.length - 1);
     }
     return decodeURIComponent(filename);
@@ -5963,7 +6008,7 @@ Math.uuid = function (len, radix) {
 
   function baseName(path) {
     var parts = path.split('/');
-    if(path.substr(-1) === '/') {
+    if (path.substr(-1) === '/') {
       return parts[parts.length-2]+'/';
     } else {
       return parts[parts.length-1];
@@ -6007,7 +6052,7 @@ Math.uuid = function (len, radix) {
   RS.GoogleDrive.prototype = {
 
     configure: function(_x, _y, _z, token) { // parameter list compatible with WireClient
-      if(token) {
+      if (token) {
         localStorage['remotestorage:googledrive:token'] = token;
         this.token = token;
         this.connected = true;
@@ -6027,8 +6072,8 @@ Math.uuid = function (len, radix) {
     },
 
     get: function(path, options) {
-      if(path.substr(-1) === '/') {
-        return this._getDir(path, options);
+      if (path.substr(-1) === '/') {
+        return this._getFolder(path, options);
       } else {
         return this._getFile(path, options);
       }
@@ -6037,9 +6082,9 @@ Math.uuid = function (len, radix) {
     put: function(path, body, contentType, options) {
       var promise = promising();
       function putDone(error, response) {
-        if(error) {
+        if (error) {
           promise.reject(error);
-        } else if(response.status >= 200 && response.status < 300) {
+        } else if (response.status >= 200 && response.status < 300) {
           var meta = JSON.parse(response.responseText);
           promise.fulfill(200, undefined, meta.mimeType, meta.etag);
         } else {
@@ -6047,10 +6092,10 @@ Math.uuid = function (len, radix) {
         }
       }
       this._getFileId(path, function(idError, id) {
-        if(idError) {
+        if (idError) {
           promise.reject(idError);
           return;
-        } else if(id) {
+        } else if (id) {
           this._updateFile(id, path, body, contentType, options, putDone);
         } else {
           this._createFile(path, body, contentType, options, putDone);
@@ -6062,13 +6107,13 @@ Math.uuid = function (len, radix) {
     'delete': function(path, options) {
       var promise = promising();
       this._getFileId(path, function(idError, id) {
-        if(idError) {
+        if (idError) {
           promise.reject(idError);
-        } else if(id) {
+        } else if (id) {
           this._request('DELETE', BASE_URL + '/drive/v2/files/' + id, {}, function(deleteError, response) {
-            if(deleteError) {
+            if (deleteError) {
               promise.reject(deleteError);
-            } else if(response.status === 200 || response.status === 204) {
+            } else if (response.status === 200 || response.status === 204) {
               promise.fulfill(200);
             } else {
               promise.reject("Delete failed: " + response.status + " (" + response.responseText + ")");
@@ -6093,7 +6138,7 @@ Math.uuid = function (len, radix) {
           'Content-Type': 'application/json; charset=UTF-8'
         }
       }, function(metadataError, response) {
-        if(metadataError) {
+        if (metadataError) {
           callback(metadataError);
         } else {
           this._request('PUT', response.getResponseHeader('Location'), {
@@ -6106,7 +6151,7 @@ Math.uuid = function (len, radix) {
     _createFile: function(path, body, contentType, options, callback) {
       callback = callback.bind(this);
       this._getParentId(path, function(parentIdError, parentId) {
-        if(parentIdError) {
+        if (parentIdError) {
           callback(parentIdError);
           return;
         }
@@ -6125,7 +6170,7 @@ Math.uuid = function (len, radix) {
             'Content-Type': 'application/json; charset=UTF-8'
           }
         }, function(metadataError, response) {
-          if(metadataError) {
+          if (metadataError) {
             callback(metadataError);
           } else {
             this._request('POST', response.getResponseHeader('Location'), {
@@ -6139,33 +6184,37 @@ Math.uuid = function (len, radix) {
     _getFile: function(path, options) {
       var promise = promising();
       this._getFileId(path, function(idError, id) {
-        if(idError) {
+        if (idError) {
           promise.reject(idError);
         } else {
           this._getMeta(id, function(metaError, meta) {
-            if(metaError) {
+            var etagWithoutQuotes;
+            if (typeof(meta) === 'object' && typeof(meta.etag) === 'string') {
+              etagWithoutQuotes = meta.etag.substring(1, meta.etag.length-1);
+            }
+            if (metaError) {
               promise.reject(metaError);
-            } else if(meta.downloadUrl) {
+            } else if (meta.downloadUrl) {
               var options = {};
-              if(meta.mimeType.match(/charset=binary/)) {
+              if (meta.mimeType.match(/charset=binary/)) {
                 options.responseType = 'blob';
               }
               this._request('GET', meta.downloadUrl, options, function(downloadError, response) {
-                if(downloadError) {
+                if (downloadError) {
                   promise.reject(downloadError);
                 } else {
                   var body = response.response;
-                  if(meta.mimeType.match(/^application\/json/)) {
+                  if (meta.mimeType.match(/^application\/json/)) {
                     try {
                       body = JSON.parse(body);
                     } catch(e) {}
                   }
-                  promise.fulfill(200, body, meta.mimeType, meta.etag);
+                  promise.fulfill(200, body, meta.mimeType, etagWithoutQuotes);
                 }
               });
             } else {
               // empty file
-              promise.fulfill(200, '', meta.mimeType, meta.etag);
+              promise.fulfill(200, '', meta.mimeType, etagWithoutQuotes);
             }
           });
         }
@@ -6173,59 +6222,51 @@ Math.uuid = function (len, radix) {
       return promise;
     },
 
-    _getDir: function(path, options) {
+    _getFolder: function(path, options) {
       var promise = promising();
       this._getFileId(path, function(idError, id) {
-        if(idError) {
+        var query, fields, data, i, etagWithoutQuotes, itemsMap;
+        if (idError) {
           promise.reject(idError);
-        } else if(! id) {
+        } else if (! id) {
           promise.fulfill(404);
         } else {
-          this._request('GET', BASE_URL + '/drive/v2/files/' + id + '/children', {}, function(childrenError, response) {
-            if(childrenError) {
+          query = '\'' + id + '\' in parents';
+          fields = 'items(downloadUrl,etag,fileSize,id,mimeType,title)';
+          this._request('GET', BASE_URL + '/drive/v2/files?'
+              + 'q=' + encodeURIComponent(query)
+              + '&fields=' + encodeURIComponent(fields)
+              + '&maxResults=1000',
+              {}, function(childrenError, response) {
+            if (childrenError) {
               promise.reject(childrenError);
             } else {
-              if(response.status === 200) {
-                var data = JSON.parse(response.responseText);
-                var n = data.items.length, i = 0;
-                if(n === 0) {
-                  // FIXME: add revision of directory!
-                  promise.fulfill(200, {}, RS_DIR_MIME_TYPE, undefined);
+              if (response.status === 200) {
+                try {
+                  data = JSON.parse(response.responseText);
+                } catch(e) {
+                  promise.reject('non-JSON response from GoogleDrive');
                   return;
                 }
-                var result = {};
-                var idCache = {};
-                var gotMeta = function(err, meta) {
-                  if(err) {
-                    // FIXME: actually propagate the error.
-                    console.error("getting meta stuff failed: ", err);
-                  } else {
-                    var fileName = fileNameFromMeta(meta);
-                    // NOTE: the ETags are double quoted. This is not a bug, but just the
-                    // way etags from google drive look like.
-                    // Example listing:
-                    //  {
-                    //    "CMakeCache.txt": "\"HK9znrxLd1pIgz63yXyznaLN5rM/MTM3NzA1OTk5NjE1NA\"",
-                    //    "CMakeFiles": "\"HK9znrxLd1pIgz63yXyznaLN5rM/MTM3NzA1OTk5NjUxNQ\"",
-                    //    "Makefile": "\"HK9znrxLd1pIgz63yXyznaLN5rM/MTM3NzA2MDIwNDA0OQ\"",
-                    //    "bgrive": "\"HK9znrxLd1pIgz63yXyznaLN5rM/MTM3NzA1OTkzODE4Nw\"",
-                    //    "cmake_install.cmake": "\"HK9znrxLd1pIgz63yXyznaLN5rM/MTM3NzA1OTkzNzU2NA\"",
-                    //    "grive": "\"HK9znrxLd1pIgz63yXyznaLN5rM/MTM3NzA1OTk2Njg2Ng\"",
-                    //    "libgrive": "\"HK9znrxLd1pIgz63yXyznaLN5rM/MTM3NzA2MDAxNDk1NQ\""
-                    //  }
-                    result[fileName] = meta.etag;
-
-                    // propagate id cache
-                    this._fileIdCache.set(path + fileName, meta.id);
+                itemsMap = {};
+                for(i=0; i<data.items.length; i++) {
+                  etagWithoutQuotes = data.items[i].etag.substring(1, data.items[i].etag.length-1);
+                  if (data.items[i].mimeType === GD_DIR_MIME_TYPE) {
+                    this._fileIdCache.set(path + data.items[i].title + '/', data.items[i].id);
+                    itemsMap[data.items[i].title + '/'] = {
+                      ETag: etagWithoutQuotes
+                    };
+                  } else { 
+                    this._fileIdCache.set(path + data.items[i].title, data.items[i].id);
+                    itemsMap[data.items[i].title] = {
+                      ETag: etagWithoutQuotes,
+                      'Content-Type': data.items[i].mimeType,
+                      'Content-Length': data.items[i].fileSize
+                    };
                   }
-                  i++;
-                  if(i === n) {
-                    promise.fulfill(200, result, RS_DIR_MIME_TYPE, undefined);
-                  }
-                }.bind(this);
-                data.items.forEach(function(item) {
-                  this._getMeta(item.id, gotMeta);
-                }.bind(this));
+                }
+                // FIXME: add revision of folder!
+                promise.fulfill(200, itemsMap, RS_DIR_MIME_TYPE, undefined);
               } else {
                 promise.reject('request failed or something: ' + response.status);
               }
@@ -6238,22 +6279,22 @@ Math.uuid = function (len, radix) {
 
     _getParentId: function(path, callback) {
       callback = callback.bind(this);
-      var dirname = parentPath(path);
-      this._getFileId(dirname, function(idError, parentId) {
-        if(idError) {
+      var foldername = parentPath(path);
+      this._getFileId(foldername, function(idError, parentId) {
+        if (idError) {
           callback(idError);
-        } else if(parentId) {
+        } else if (parentId) {
           callback(null, parentId);
         } else {
-          this._createDir(dirname, callback);
+          this._createFolder(foldername, callback);
         }
       });
     },
 
-    _createDir: function(path, callback) {
+    _createFolder: function(path, callback) {
       callback = callback.bind(this);
       this._getParentId(path, function(idError, parentId) {
-        if(idError) {
+        if (idError) {
           callback(idError);
         } else {
           this._request('POST', BASE_URL + '/drive/v2/files', {
@@ -6268,7 +6309,7 @@ Math.uuid = function (len, radix) {
               'Content-Type': 'application/json; charset=UTF-8'
             }
           }, function(createError, response) {
-            if(createError) {
+            if (createError) {
               callback(createError);
             } else {
               var meta = JSON.parse(response.responseText);
@@ -6282,19 +6323,19 @@ Math.uuid = function (len, radix) {
     _getFileId: function(path, callback) {
       callback = callback.bind(this);
       var id;
-      if(path === '/') {
-        // "root" is a special alias for the fileId of the root directory
+      if (path === '/') {
+        // "root" is a special alias for the fileId of the root folder
         callback(null, 'root');
-      } else if((id = this._fileIdCache.get(path))) {
+      } else if ((id = this._fileIdCache.get(path))) {
         // id is cached.
         callback(null, id);
       } else {
         // id is not cached (or file doesn't exist).
-        // load parent directory listing to propagate / update id cache.
-        this._getDir(parentPath(path)).then(function() {
+        // load parent folder listing to propagate / update id cache.
+        this._getFolder(parentPath(path)).then(function() {
           var id = this._fileIdCache.get(path);
           if (!id) {
-            callback('no file or directory found at the path: ' + path, null);
+            callback('no file or folder found at the path: ' + path, null);
             return;
           }
           callback(null, id);
@@ -6305,10 +6346,10 @@ Math.uuid = function (len, radix) {
     _getMeta: function(id, callback) {
       callback = callback.bind(this);
       this._request('GET', BASE_URL + '/drive/v2/files/' + id, {}, function(err, response) {
-        if(err) {
+        if (err) {
           callback(err);
         } else {
-          if(response.status === 200) {
+          if (response.status === 200) {
             callback(null, JSON.parse(response.responseText));
           } else {
             callback("request (getting metadata for " + id + ") failed with status: " + response.status);
@@ -6323,7 +6364,7 @@ Math.uuid = function (len, radix) {
       options.headers['Authorization'] = 'Bearer ' + this.token;
       RS.WireClient.request.call(this, method, url, options, function(err, xhr) {
         // google tokens expire from time to time...
-        if(xhr && xhr.status === 401) {
+        if (xhr && xhr.status === 401) {
           this.connect();
           return;
         }
@@ -6334,9 +6375,9 @@ Math.uuid = function (len, radix) {
 
   RS.GoogleDrive._rs_init = function(remoteStorage) {
     var config = remoteStorage.apiKeys.googledrive;
-    if(config) {
+    if (config) {
       remoteStorage.googledrive = new RS.GoogleDrive(remoteStorage, config.client_id);
-      if(remoteStorage.backend === 'googledrive') {
+      if (remoteStorage.backend === 'googledrive') {
         remoteStorage._origRemote = remoteStorage.remote;
         remoteStorage.remote = remoteStorage.googledrive;
       }
@@ -6349,7 +6390,7 @@ Math.uuid = function (len, radix) {
 
   RS.GoogleDrive._rs_cleanup = function(remoteStorage) {
     remoteStorage.setBackend(undefined);
-    if(remoteStorage._origRemote) {
+    if (remoteStorage._origRemote) {
       remoteStorage.remote = remoteStorage._origRemote;
       delete remoteStorage._origRemote;
     }
@@ -6381,14 +6422,14 @@ Math.uuid = function (len, radix) {
    * when the remotestorage.backend was set to 'dropbox' it will initialize and resets
    * remoteStorage.remote with remoteStorage.dropbox
    *
-   * for compability with the public directory the getItemURL function of the BaseClient gets
+   * for compability with the public folder the getItemURL function of the BaseClient gets
    * highjackt and returns the dropbox share-url
    *
    * to connect with dropbox a connect function is provided
    *
    * known issues :
    *   files larger than 150mb are not suported for upload
-   *   directories with more than 10.000 files will cause problems to list
+   *   folders with more than 10.000 files will cause problems to list
    *   content-type is guessed by dropbox.com therefore they aren't fully supported
    *   dropbox preserves cases but not case sensitive
    *   share_urls and therfeor getItemURL is asynchronius , which means
@@ -6402,7 +6443,7 @@ Math.uuid = function (len, radix) {
   /*************************
    * LowerCaseCache
    * this Cache will lowercase its keys
-   * and can propagate the values to "upper directories"
+   * and can propagate the values to "upper folders"
    *
    * intialized with default Value(undefined will be accepted)
    *
@@ -6428,7 +6469,7 @@ Math.uuid = function (len, radix) {
     get : function(key) {
       key = key.toLowerCase();
       var stored = this._storage[key];
-      if(typeof stored === 'undefined'){
+      if (typeof stored === 'undefined'){
         stored = this.defaultValue;
         this._storage[key] = stored;
       }
@@ -6461,13 +6502,13 @@ Math.uuid = function (len, radix) {
       return delete this._storage[key];
     },
     _propagate: function(key, rev){
-      var dirs = key.split('/').slice(0,-1);
-      var len = dirs.length;
+      var folders = key.split('/').slice(0,-1);
+      var len = folders.length;
       var path = '';
 
-      for(var i = 0; i < len; i++){
-        path += dirs[i]+'/';
-        if(!rev) {
+      for (var i = 0; i < len; i++){
+        path += folders[i]+'/';
+        if (!rev) {
           rev = this._storage[path]+1;
         }
         this._storage[path] =  rev;
@@ -6500,7 +6541,7 @@ Math.uuid = function (len, radix) {
     var self = this;
 
     onErrorCb = function(error){
-      if(error instanceof RemoteStorage.Unauthorized) {
+      if (error instanceof RemoteStorage.Unauthorized) {
         self.configure(null,null,null,null);
       }
     };
@@ -6512,19 +6553,19 @@ Math.uuid = function (len, radix) {
     this._revCache = new LowerCaseCache('rev');
     this._itemRefs = {};
 
-    if(hasLocalStorage){
+    if (hasLocalStorage){
       var settings;
       try {
         settings = JSON.parse(localStorage[SETTINGS_KEY]);
       } catch(e){}
-      if(settings) {
+      if (settings) {
         this.configure(settings.userAddress, undefined, undefined, settings.token);
       }
       try {
         this._itemRefs = JSON.parse(localStorage[ SETTINGS_KEY+':shares' ]);
       } catch(e) {  }
     }
-    if(this.connected) {
+    if (this.connected) {
       setTimeout(this._emit.bind(this), 0, 'connected');
     }
   };
@@ -6539,7 +6580,7 @@ Math.uuid = function (len, radix) {
     connect: function() {
       //ToDo handling when token is already present
       this.rs.setBackend('dropbox');
-      if(this.token){
+      if (this.token){
         hookIt(this.rs);
       } else {
         RS.Authorize(AUTH_URL, '', String(RS.Authorize.getLocation()), this.clientId);
@@ -6555,9 +6596,9 @@ Math.uuid = function (len, radix) {
       if (typeof token !== 'undefined') { this.token = token; }
       if (typeof userAddress !== 'undefined') { this.userAddress = userAddress; }
 
-      if(this.token){
+      if (this.token){
         this.connected = true;
-        if( !this.userAddress ){
+        if ( !this.userAddress ){
           this.info().then(function(info){
             this.userAddress = info.display_name;
             //FIXME propagate this to the view
@@ -6567,20 +6608,20 @@ Math.uuid = function (len, radix) {
       } else {
         this.connected = false;
       }
-      if(hasLocalStorage){
+      if (hasLocalStorage){
         localStorage[SETTINGS_KEY] = JSON.stringify( { token: this.token,
                                                        userAddress: this.userAddress } );
       }
     },
     /**
-     * Method : _getDir(path, options)
+     * Method : _getFolder(path, options)
      **/
-    _getDir: function(path, options){
+    _getFolder: function(path, options){
       var url = 'https://api.dropbox.com/1/metadata/auto'+path;
       var promise = promising();
       var revCache = this._revCache;
       this._request('GET', url, {}, function(err, resp){
-        if(err){
+        if (err){
           promise.reject(err);
         }else{
           var status = resp.status;
@@ -6597,10 +6638,10 @@ Math.uuid = function (len, radix) {
           }
           rev = this._revCache.get(path);
           mime = 'application/json; charset=UTF-8';
-          if(body.contents) {
+          if (body.contents) {
             listing = body.contents.reduce(function(m, item) {
               var itemName = item.path.split('/').slice(-1)[0] + ( item.is_dir ? '/' : '' );
-              if(item.is_dir){
+              if (item.is_dir){
                 m[itemName] = revCache.get(path+itemName);
               } else {
                 m[itemName] = item.rev;
@@ -6617,24 +6658,24 @@ Math.uuid = function (len, radix) {
      * Method : get(path, options)
      *   get compatible with wireclient
      *   checks for path in _revCache and decides based on that if file has changed
-     *   calls _getDir if file is a directory
+     *   calls _getFolder if file is a folder
      *   calls share(path) afterwards to fill the _hrefCache
      **/
     get: function(path, options){
       console.log('dropbox.get', arguments);
-      if(! this.connected) { throw new Error("not connected (path: " + path + ")"); }
+      if (! this.connected) { throw new Error("not connected (path: " + path + ")"); }
       path = cleanPath(path);
       var url = 'https://api-content.dropbox.com/1/files/auto' + path;
       var promise = this._sharePromise(path);
 
       var savedRev = this._revCache.get(path);
-      if(savedRev === null) {
+      if (savedRev === null) {
         //file was deleted server side
         console.log(path,' deleted 404');
         promise.fulfill(404);
         return promise;
       }
-      if(options && options.ifNoneMatch &&
+      if (options && options.ifNoneMatch &&
          savedRev && (savedRev === options.ifNoneMatch)) {
         // nothing changed.
         console.log("nothing changed for",path,savedRev, options.ifNoneMatch);
@@ -6642,11 +6683,11 @@ Math.uuid = function (len, radix) {
         return promise;
       }
 
-      //use _getDir for directories
-      if(path.substr(-1) === '/') { return this._getDir(path, options); }
+      //use _getFolder for folders
+      if (path.substr(-1) === '/') { return this._getFolder(path, options); }
 
       this._request('GET', url, {}, function(err, resp){
-        if(err) {
+        if (err) {
           promise.reject(err);
         } else {
           var status = resp.status;
@@ -6666,13 +6707,13 @@ Math.uuid = function (len, radix) {
             this._revCache.set(path, rev);
 
             // handling binary
-            if((! resp.getResponseHeader('Content-Type') ) || resp.getResponseHeader('Content-Type').match(/charset=binary/)) {
+            if ((! resp.getResponseHeader('Content-Type') ) || resp.getResponseHeader('Content-Type').match(/charset=binary/)) {
               RS.WireClient.readBinaryData(resp.response, mime, function(result) {
                 promise.fulfill(status, result, mime, rev);
               });
             } else {
               // handling json (always try)
-              if(mime && mime.search('application/json') >= 0 || true) {
+              if (mime && mime.search('application/json') >= 0 || true) {
                 try {
                   body = JSON.parse(body);
                   mime = 'application/json; charset=UTF-8';
@@ -6707,29 +6748,29 @@ Math.uuid = function (len, radix) {
 
       //check if file has changed and return 412
       var savedRev = revCache.get(path);
-      if(options && options.ifMatch &&  savedRev && (savedRev !== options.ifMatch) ) {
+      if (options && options.ifMatch &&  savedRev && (savedRev !== options.ifMatch) ) {
         promise.fulfill(412);
         return promise;
       }
-      if(! contentType.match(/charset=/)) {
+      if (! contentType.match(/charset=/)) {
         contentType += '; charset=' + ((body instanceof ArrayBuffer || RS.WireClient.isArrayBufferView(body)) ? 'binary' : 'utf-8');
       }
       var url = 'https://api-content.dropbox.com/1/files_put/auto' + path + '?';
-      if(options && options.ifMatch) {
+      if (options && options.ifMatch) {
         url += "parent_rev="+encodeURIComponent(options.ifMatch);
       }
-      if(body.length>150*1024*1024){ //FIXME actual content-length
+      if (body.length>150*1024*1024){ //FIXME actual content-length
         //https://www.dropbox.com/developers/core/docs#chunked-upload
         console.log('files larger than 150MB not supported yet');
       } else {
         this._request('PUT', url, {body:body, headers:{'Content-Type':contentType}}, function(err, resp) {
-          if(err) {
+          if (err) {
             promise.reject(err);
           } else {
             var response = JSON.parse(resp.responseText);
             // if dropbox reports an file conflict they just change the name of the file
             // TODO find out which stays the origianl and how to deal with this
-            if(response.path !== path){
+            if (response.path !== path){
               promise.fulfill(412);
               this.rs.log('Dropbox created conflicting File ', response.path);
             }
@@ -6749,21 +6790,21 @@ Math.uuid = function (len, radix) {
      **/
     'delete': function(path, options){
       console.log('dropbox.delete ', arguments);
-      if(! this.connected) { throw new Error("not connected (path: " + path + ")"); }
+      if (! this.connected) { throw new Error("not connected (path: " + path + ")"); }
       path = cleanPath(path);
 
       var promise = promising();
       var revCache = this._revCache;
       //check if file has changed and return 412
       var savedRev = revCache.get(path);
-      if(options.ifMatch && savedRev && (options.ifMatch !== savedRev)) {
+      if (options.ifMatch && savedRev && (options.ifMatch !== savedRev)) {
         promise.fulfill(412);
         return promise;
       }
 
       var url = 'https://api.dropbox.com/1/fileops/delete?root=auto&path='+encodeURIComponent(path);
       this._request('POST', url, {}, function(err, resp){
-        if(err) {
+        if (err) {
           promise.reject(error);
         } else {
           promise.fulfill(resp.status);
@@ -6820,7 +6861,7 @@ Math.uuid = function (len, radix) {
 
       // requesting shareing url
       this._request('POST', url, {}, function(err, resp){
-        if(err) {
+        if (err) {
           console.log(err);
           err.message = 'Shareing Dropbox Thingie("'+path+'") failed' + err.message;
           promise.reject(err);
@@ -6830,7 +6871,7 @@ Math.uuid = function (len, radix) {
             var url = response.url;
             itemRefs[path] = url;
             console.log("SHAREING URL :::: ",url,' for ',path);
-            if(hasLocalStorage) {
+            if (hasLocalStorage) {
               localStorage[SETTINGS_KEY+":shares"] = JSON.stringify(this._itemRefs);
             }
             promise.fulfill(url);
@@ -6852,7 +6893,7 @@ Math.uuid = function (len, radix) {
       var promise = promising();
       // requesting user info(mainly for userAdress)
       this._request('GET', url, {}, function(err, resp){
-        if(err) {
+        if (err) {
           promise.reject(err);
         } else {
           try {
@@ -6872,7 +6913,7 @@ Math.uuid = function (len, radix) {
       options.headers['Authorization'] = 'Bearer ' + this.token;
       RS.WireClient.request.call(this, method, url, options, function(err, xhr) {
         //503 means retry this later
-        if(xhr && xhr.status === 503) {
+        if (xhr && xhr.status === 503) {
           global.setTimeout(this._request(method, url, options, callback), 3210);
         } else {
           callback(err, xhr);
@@ -6897,7 +6938,7 @@ Math.uuid = function (len, radix) {
           'Content-Type': 'application/x-www-form-urlencoded'
         }
       }, function(error, response) {
-        if(error) {
+        if (error) {
           this.rs.log('fetchDeltas',error);
           this.rs._emit('error', new RemoteStorage.SyncError('fetchDeltas failed'+error));
           promise.reject(error);
@@ -6928,7 +6969,7 @@ Math.uuid = function (len, radix) {
           }
 
           // Dropbox sends the complete state
-          if(delta.reset) {
+          if (delta.reset) {
             this._revCache = new LowerCaseCache('rev');
             promise.then(function(){
               var args = Array.prototype.slice.call(arguments);
@@ -6939,7 +6980,7 @@ Math.uuid = function (len, radix) {
           }
 
           //saving the cursor for requesting further deltas in relation to the cursor position
-          if(delta.cursor) {
+          if (delta.cursor) {
             this._deltaCursor = delta.cursor;
           }
 
@@ -6948,10 +6989,10 @@ Math.uuid = function (len, radix) {
           delta.entries.forEach(function(entry) {
             var path = entry[0];
             var rev;
-            if(!entry[1]){
+            if (!entry[1]){
               rev = null;
             } else {
-              if(entry[1].is_dir) {
+              if (entry[1].is_dir) {
                 return;
               }
               rev = entry[1].rev;
@@ -6968,7 +7009,7 @@ Math.uuid = function (len, radix) {
   //hooking and unhooking the sync
 
   function hookSync(rs) {
-    if(rs._dropboxOrigSync) { return; } // already hooked
+    if (rs._dropboxOrigSync) { return; } // already hooked
     rs._dropboxOrigSync = rs.sync.bind(rs);
     rs.sync = function() {
       return this.dropbox.fetchDelta.apply(this.dropbox, arguments).
@@ -6979,7 +7020,7 @@ Math.uuid = function (len, radix) {
   }
 
   function unHookSync(rs) {
-    if(! rs._dropboxOrigSync) { return; } // not hooked
+    if (! rs._dropboxOrigSync) { return; } // not hooked
     rs.sync = rs._dropboxOrigSync;
     delete rs._dropboxOrigSync;
   }
@@ -6987,7 +7028,7 @@ Math.uuid = function (len, radix) {
   // hooking and unhooking getItemURL
 
   function hookGetItemURL(rs) {
-    if(rs._origBaseClientGetItemURL) { return; }
+    if (rs._origBaseClientGetItemURL) { return; }
     rs._origBaseClientGetItemURL = RS.BaseClient.prototype.getItemURL;
     RS.BaseClient.prototype.getItemURL = function(path){
       var ret = rs.dropbox._itemRefs[path];
@@ -6996,19 +7037,19 @@ Math.uuid = function (len, radix) {
   }
 
   function unHookGetItemURL(rs){
-    if(! rs._origBaseClieNtGetItemURL) { return; }
+    if (! rs._origBaseClieNtGetItemURL) { return; }
     RS.BaseClient.prototype.getItemURL = rs._origBaseClietGetItemURL;
     delete rs._origBaseClietGetItemURL;
   }
 
   function hookRemote(rs){
-    if(rs._origRemote) { return; }
+    if (rs._origRemote) { return; }
     rs._origRemote = rs.remote;
     rs.remote = rs.dropbox;
   }
 
   function unHookRemote(rs){
-    if(rs._origRemote) {
+    if (rs._origRemote) {
       rs.remote = rs._origRemote;
       delete rs._origRemote;
     }
@@ -7016,7 +7057,7 @@ Math.uuid = function (len, radix) {
 
   function hookIt(rs){
     hookRemote(rs);
-    if(rs.sync) {
+    if (rs.sync) {
       hookSync(rs);
     }
     hookGetItemURL(rs);
@@ -7030,10 +7071,10 @@ Math.uuid = function (len, radix) {
 
   RS.Dropbox._rs_init = function(rs) {
     hasLocalStorage = rs.localStorageAvailable();
-    if( rs.apiKeys.dropbox ) {
+    if ( rs.apiKeys.dropbox ) {
       rs.dropbox = new RS.Dropbox(rs);
     }
-    if(rs.backend === 'dropbox') {
+    if (rs.backend === 'dropbox') {
       hookIt(rs);
     }
   };
@@ -7044,7 +7085,7 @@ Math.uuid = function (len, radix) {
 
   RS.Dropbox._rs_cleanup = function(rs) {
     unHookIt(rs);
-    if(hasLocalStorage){
+    if (hasLocalStorage){
       delete localStorage[SETTINGS_KEY];
     }
     rs.removeEventListener('error', onErrorCb);
