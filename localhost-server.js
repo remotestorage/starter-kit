@@ -1,6 +1,7 @@
 var fs = require('fs'),
   url = require('url'),
-  crypto = require('crypto');
+  crypto = require('crypto'),
+  RemotestorageServer = require('remotestorage-server');
 
 exports.createInstance = function(kv, config) {
   var tokenStore = {
@@ -12,7 +13,7 @@ exports.createInstance = function(kv, config) {
     set: function(k, v, cb) { return kv.set('data:'+k, v, cb); }
   };
 
-  var remotestorageServer = require('remotestorage-server').createServer('draft-dejong-remotestorage-02', tokenStore, dataStore);
+  var remotestorageServer = new RemotestorageServer('draft-dejong-remotestorage-02', tokenStore, dataStore);
 
   function log(str) {
     console.log(str);

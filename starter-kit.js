@@ -33,7 +33,7 @@ var kv = (function() {
   var store = {};
   return {
     set: function(k, v, cb) { store[k] = v; cb(); },
-    get: function(k, cb) { cb(store[k]); }
+    get: function(k, cb) { cb(null, store[k]); }
   };
  })();
 
