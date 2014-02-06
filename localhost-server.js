@@ -1,6 +1,7 @@
 var fs = require('fs'),
   url = require('url'),
-  crypto = require('crypto');
+  crypto = require('crypto'),
+  RemotestorageServer = require('remotestorage-server');
 
 exports.createInstance = function(kv, config) {
   var tokenStore = {
@@ -12,7 +13,7 @@ exports.createInstance = function(kv, config) {
     set: function(k, v, cb) { return kv.set('data:'+k, v, cb); }
   };
 
-  var remotestorageServer = require('remotestorage-server').createServer('draft-dejong-remotestorage-02', tokenStore, dataStore);
+  var remotestorageServer = new RemotestorageServer('draft-dejong-remotestorage-02', tokenStore, dataStore);
 
   function log(str) {
     console.log(str);
@@ -24,8 +25,9 @@ exports.createInstance = function(kv, config) {
       var scopePaths = remotestorageServer.makeScopePaths(userName, scopes);
       log('createToken ',userName,scopes);
       log('adding ',scopePaths,' for',token);
-      tokenStore.set(token, scopePaths);
-      cb(token);
+      tokenStore.set(token, scopePaths, function(err) {
+        cb(token);
+      });
     });
   }
   function writeHead(res, status, origin, timestamp, contentType, contentLength) {
