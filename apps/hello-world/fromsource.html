@@ -54,7 +54,40 @@
 
   <script src="notes.js"></script>
   <script>
-    function $(id) { return document.getElementById(id); }
+   remoteStorage.enableLog();
+   for(i in {
+     ready: true,
+     disconnected: true,
+     disconnect: true,
+     error: true,
+     'features-loaded': true,
+     connecting: true,
+     authing: true,
+     'wire-busy': true,
+     'wire-busy': true
+   }) {
+     remoteStorage.on(i, (function(captureI) {
+       return function() {
+         console.log('rs event', captureI);
+      };
+     })(i));
+   }
+   for(i in {
+     change: true,
+     connected: true,
+     'wire-busy': true,
+     'wire-done': true,
+     'not-connected': true
+   }) {
+     remoteStorage.remote.on(i, (function(captureI) {
+       return function() {
+         console.log('rs.remote event', captureI);
+      };
+     })(i));
+   }
+   remoteStorage.stopSync();
+   
+   function $(id) { return document.getElementById(id); }
 
     function displayNote() {
       var text = remoteStorage.notes.getNote();
