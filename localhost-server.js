@@ -15,8 +15,8 @@ exports.createInstance = function(kv, config) {
 
   var remotestorageServer = new RemotestorageServer('draft-dejong-remotestorage-02', tokenStore, dataStore);
 
-  function log(str) {
-    console.log(str);
+  function log() {
+    console.log.apply(console, arguments);
   }
   
   function createToken(userName, scopes, cb) {
