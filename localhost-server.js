@@ -15,8 +15,8 @@ exports.createInstance = function(kv, config) {
 
   var remotestorageServer = new RemotestorageServer('draft-dejong-remotestorage-02', tokenStore, dataStore);
 
-  function log(str) {
-    console.log(str);
+  function log() {
+    console.log.apply(console, arguments);
   }
   
   function createToken(userName, scopes, cb) {
@@ -25,8 +25,9 @@ exports.createInstance = function(kv, config) {
       var scopePaths = remotestorageServer.makeScopePaths(userName, scopes);
       log('createToken ',userName,scopes);
       log('adding ',scopePaths,' for',token);
-      tokenStore.set(token, scopePaths);
-      cb(token);
+      tokenStore.set(token, scopePaths, function(err) {
+        cb(token);
+      });
     });
   }
   function writeHead(res, status, origin, timestamp, contentType, contentLength) {
