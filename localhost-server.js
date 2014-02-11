@@ -94,7 +94,7 @@ exports.createInstance = function(kv, config) {
       outstanding++;
       (function(i) {
         createToken(config.defaultUserName, ['*:rw'], function(token) {
-          res.write('<li><a href="'+i+'#remotestorage=me@localhost'
+          res.write('<li><a href="'+i+'#remotestorage=me@'+config.host+':'+config.portalPort
                     +'&access_token='+token+'">'+config.apps[i]+'</a></li>');
           outstanding--;
           if(outstanding==0) {
