@@ -12,10 +12,12 @@ First, save this starter-kit into a folder on your computer, by downloading
 and unpacking https://github.com/remotestorage/starter-kit/archive/master.zip
 or by cloning this repository using git.
 
-Then, open a command line terminal, and inside the starter-kit directory, install
-the dependencies by running:
+Then, open a command-line terminal, and type:
 
+    cd starter-kit
     npm install
+    
+to install the dependencies.
 
 This starter kit contains three things, baked into one:
 
@@ -25,7 +27,7 @@ This starter kit contains three things, baked into one:
 
 To launch all three, you only need to type one command:
 
-    sudo node starter-kit
+    node starter-kit
 
 
 ### Next steps
