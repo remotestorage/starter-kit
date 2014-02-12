@@ -8,7 +8,12 @@ your starting point.
 In order to run the example server, you need
 [node.js](http://nodejs.org/download/) with NPM installed.
 
-First, install the dependencies with:
+First, save this starter-kit onto a folder on your computer, by downloading
+and unpacking https://github.com/remotestorage/starter-kit/archive/master.zip
+or by cloning this repository using git.
+
+Then, open a command line terminal, and inside the starter-kit directory, install
+the dependencies by running:
 
     npm install
 
