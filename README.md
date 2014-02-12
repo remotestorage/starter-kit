@@ -17,7 +17,8 @@ Then, open a command-line terminal, and type:
     cd starter-kit
     npm install
     
-to install the dependencies.
+to install the dependencies (where `starter-kit` is the folder you unpacked from
+the download or with git).
 
 This starter kit contains three things, baked into one:
 
