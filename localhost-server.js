@@ -13,7 +13,7 @@ exports.createInstance = function(kv, config) {
     set: function(username, key, buf, cb) { return kv.set(username+':data:'+key, buf, cb); }
   };
 
-  var remotestorageServer = new RemotestorageServer('draft-dejong-remotestorage-02', tokenStore, dataStore);
+  var remotestorageServer = new RemotestorageServer('draft-dejong-remotestorage-01', tokenStore, dataStore);
 
   function log() {
     console.log.apply(console, arguments);
