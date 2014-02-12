@@ -5,12 +5,12 @@ var fs = require('fs'),
 
 exports.createInstance = function(kv, config) {
   var tokenStore = {
-    get: function(k, cb) { return kv.get('token:'+k, cb); },
-    set: function(k, v, cb) { return kv.set('token:'+k, v, cb); }
+    get: function(username, token, cb) { return kv.get(username+':token:'+token, cb); },
+    set: function(username, token, obj, cb) { return kv.set(username+':token:'+token, obj, cb); }
   };
   var dataStore = {
-    get: function(k, cb) { return kv.get('data:'+k, cb); },
-    set: function(k, v, cb) { return kv.set('data:'+k, v, cb); }
+    get: function(username, key, cb) { return kv.get(username+':data:'+key, cb); },
+    set: function(username, key, buf, cb) { return kv.set(username+':data:'+key, buf, cb); }
   };
 
   var remotestorageServer = new RemotestorageServer('draft-dejong-remotestorage-02', tokenStore, dataStore);
@@ -22,10 +22,10 @@ exports.createInstance = function(kv, config) {
   function createToken(userName, scopes, cb) {
     crypto.randomBytes(48, function(ex, buf) {
       var token = buf.toString('hex');
-      var scopePaths = remotestorageServer.makeScopePaths(userName, scopes);
+      var scopePaths = remotestorageServer.makeScopePaths(scopes);
       log('createToken ',userName,scopes);
       log('adding ',scopePaths,' for',token);
-      tokenStore.set(token, scopePaths, function(err) {
+      tokenStore.set(userName, token, scopePaths, function(err) {
         cb(token);
       });
     });
@@ -133,6 +133,8 @@ exports.createInstance = function(kv, config) {
     portal: portal,
     webfinger: webfinger,
     oauth: oauth,
-    storage: remotestorageServer.storage
+    storage: function(req, res) {
+      return remotestorageServer.storage(req, res);
+    }
   };
 };
