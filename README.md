@@ -33,7 +33,7 @@ To launch all three, you only need to type one command:
 
 ### Next steps
 
-* Visit `http://localhost/` and click on the "hello-world" link
+* Visit `http://localhost:8001/` and click on the "hello-world" link
 * Open the web console (Ctrl-Shft-K in FF, Ctrl-Shft-I in Chrome, F12 in IE)
 * see how the hello-world app runs on port 8002, yet the AJAX requests go to your
     storage for `me@localhost:8001`, on port 8001.
