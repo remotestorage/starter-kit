@@ -14,9 +14,9 @@ First, install the dependencies with:
 
 This starter kit contains three things, baked into one:
 
-  * a remoteStorage server, which you can use as `me@localhost`
-  * a launch schreen, which you can open at `http://localhost/`
-  * a "hello-world" app, in the `apps/` directory (where the launch screen detects it).
+  * a remoteStorage server, which you can use as `me@localhost:8001`
+  * a launch schreen, which you can open at `http://localhost:8001/`
+  * a "hello-world" app, in the `apps/` folder (where the launch screen detects it).
 
 To launch all three, you only need to type one command:
 
@@ -27,13 +27,18 @@ To launch all three, you only need to type one command:
 
 * Visit `http://localhost/` and click on the "hello-world" link
 * Open the web console (Ctrl-Shft-K in FF, Ctrl-Shft-I in Chrome, F12 in IE)
-* see how the hello-world app runs on port 8001, yet the AJAX requests go to your storage
-    for `me@localhost`, on port 80.
+* see how the hello-world app runs on port 8002, yet the AJAX requests go to your
+    storage for `me@localhost:8001`, on port 8001.
+* This is of course useless if it's on the same host, but you can see how this is
+    a powerful architecture change if not only the port but also the domain name
+    differs between the app and the storage: netizens can host their own data on
+    their own server, instead of on the application provider's server. See
+    https://unhosted.org/ and http://nobackend.org/ for more info about this revolution.
 * Inspect the application code in `apps/hello-world/index.html` using your favorite editor
 * Inspect the `remoteStorage.notes` code in `apps/hello-world/notes.js`
 * Read the docs on http://remotestorage.io/integrate/
-* Copy and rename the `apps/hello-world/` directory to e.g. `apps/my-first-unhosted-app/`
-* The starter-kit will detect each directory you create under `apps/` at startup, and add
+* Hack! :) Copy and rename the `apps/hello-world/` folder to e.g. `apps/my-first-unhosted-app/`
+* The starter-kit will detect each folder you create under `apps/` at startup, and add
     it to the launch screen on `http://localhost/`
 * Post your reactions and questions on 
     http://community.remotestorage.io/categories/getting-started

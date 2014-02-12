@@ -113,7 +113,7 @@ exports.createInstance = function(kv, config) {
       userName = userAddress.split('@')[0];
     }
     writeJson(res, {
-      links:[ remotestorageServer.getWebfingerLink('http', config.host, config.storagePort, userName, 'http://'+config.host+'/auth/'+userName) ]
+      links:[ remotestorageServer.getWebfingerLink('http', config.host, config.storagePort, userName, 'http://'+config.host+':'+config.portalPort+'/auth/'+userName) ]
     });
   }
   function oauth(req, res) {

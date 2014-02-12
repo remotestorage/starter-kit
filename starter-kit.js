@@ -7,7 +7,7 @@ var config = {
   defaultUserName: 'me',
   host: 'localhost',
   storagePort: 8000,
-  portalPort: 80,
+  portalPort: 8001,
   firstAppPort: 8002,
   apps: {}
 };
@@ -41,7 +41,6 @@ var server;
 
 function serveMain(req, res) {
   var urlObj = url.parse(req.url, true), userAddress, userName;
-  console.log(urlObj);
   if(urlObj.pathname == '/') {
     server.portal(req, res);
   } else if(urlObj.pathname == '/.well-known/webfinger') {
@@ -74,10 +73,8 @@ function launch() {
       server = require('./localhost-server').createInstance(kv, config);
       http.createServer(serveMain).listen(config.portalPort);
       http.createServer(serveStorage).listen(config.storagePort);
-      //console.log('See http://' + config.host + ':' + config.portalPort + '/'
-      //    + ' or visit a remoteStorage.js 0.10+ app and connect with me@localhost:'+ config.portalPort + ' (special backdoor!)');
-      console.log('See http://' + config.host + '/'
-          + ' or visit a remoteStorage.js app and connect with me@localhost');
+      console.log('See http://' + config.host + ':' + config.portalPort + '/'
+          + ' or visit a remoteStorage.js-based app and connect with me@localhost:'+ config.portalPort + ' (special backdoor!)');
     }
   });
 }
