@@ -7,7 +7,7 @@ var config = {
   defaultUserName: 'me',
   host: 'localhost',
   storagePort: 8000,
-  portalPort: 8001,
+  portalPort: 80,
   firstAppPort: 8002,
   apps: {}
 };
