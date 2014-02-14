@@ -47,6 +47,6 @@ To launch all three, you only need to type one command:
 * Read the docs on http://remotestorage.io/integrate/
 * Hack! :) Copy and rename the `apps/hello-world/` folder to e.g. `apps/my-first-unhosted-app/`
 * The starter-kit will detect each folder you create under `apps/` at startup, and add
-    it to the launch screen on `http://localhost/`
+    it to the launch screen on `http://localhost:8001/`
 * Post your reactions and questions on 
     http://community.remotestorage.io/categories/getting-started
