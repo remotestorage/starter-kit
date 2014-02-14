@@ -1,12 +1,12 @@
 remoteStorage Starter Kit
 =========================
 
-This dev kit is the quickest way to get started with remoteStorage app
+This starter kit is the quickest way to get started with remoteStorage app
 development. It gives you a local remoteStorage server and a Hello World app as
 your starting point.
 
-In order to run the example server, you need
-[node.js](http://nodejs.org/download/) with NPM installed.
+In order to run it, you need
+[node.js](http://nodejs.org/download/) installed.
 
 First, save this starter-kit into a folder on your computer, by downloading
 and unpacking https://github.com/remotestorage/starter-kit/archive/master.zip
@@ -36,7 +36,7 @@ To launch all three, you only need to type one command:
 * Visit `http://localhost:8001/` and click on the "hello-world" link
 * Open the web console (Ctrl-Shft-K in FF, Ctrl-Shft-I in Chrome, F12 in IE)
 * see how the hello-world app runs on port 8002, yet the AJAX requests go to your
-    storage for `me@localhost:8001`, on port 8001.
+    storage for `me@localhost:8001`, on port 8000.
 * This is of course useless if it's on the same host, but you can see how this is
     a powerful architecture change if not only the port but also the domain name
     differs between the app and the storage: netizens can host their own data on
