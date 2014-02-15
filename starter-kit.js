@@ -25,7 +25,7 @@ function setApps(listing) {
   for(var i=0; i<listing.length; i++) {
     var listener = staticServer('./apps/'+listing[i]);
     http.createServer(listener).listen(config.firstAppPort+i);
-    config.apps['http://localhost:'+(config.firstAppPort+i)+'/'] = listing[i];
+    config.apps['http://'+config.host+':'+(config.firstAppPort+i)+'/'] = listing[i];
   }
 }
   
