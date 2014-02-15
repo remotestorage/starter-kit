@@ -36,7 +36,7 @@ To launch all three, you only need to type one command:
 * Visit `http://localhost:8001/` and click on the "hello-world" link
 * Open the web console (Ctrl-Shift-K in FF, Ctrl-Shift-I in Chrome, F12 in IE)
 * see how the hello-world app runs on port 8002, yet the AJAX requests go to your
-    storage for `me@localhost:8001`, on port 8001.
+    storage for `me@localhost:8001`, on port 8000.
 * This is of course useless if it's on the same host, but you can see how this is
     a powerful architecture change if not only the port but also the domain name
     differs between the app and the storage: netizens can host their own data on
