@@ -13,7 +13,15 @@ exports.createInstance = function(kv, config) {
     set: function(username, key, buf, cb) { return kv.set(username+':data:'+key, buf, cb); }
   };
 
-  var remotestorageServer = new RemotestorageServer('draft-dejong-remotestorage-01', tokenStore, dataStore);
+  var rootScope,
+    specVersion = 'draft-dejong-remotestorage-01',
+    remotestorageServer = new RemotestorageServer(specVersion, tokenStore, dataStore);
+
+  if (specVersion === 'draft-dejong-remotestorage-00' || specVersion === 'draft-dejong-remotestorage-01') {
+    rootScope = 'root';
+  } else {//02, 03, etc.
+    rootScope = '*';
+  }
 
   function log() {
     console.log.apply(console, arguments);
@@ -93,7 +101,7 @@ exports.createInstance = function(kv, config) {
     for(var i in config.apps) {
       outstanding++;
       (function(i) {
-        createToken(config.defaultUserName, ['*:rw'], function(token) {
+        createToken(config.defaultUserName, [rootScope+':rw'], function(token) {
           res.write('<li><a href="'+i+'#remotestorage=me@'+config.host+':'+config.portalPort
                     +'&access_token='+token+'">'+config.apps[i]+'</a></li>');
           outstanding--;
