@@ -5414,7 +5414,7 @@ Math.uuid = function (len, radix) {
     for (field in srcObj) {
       if (typeof(srcObj[field]) === 'object') {
         console.log('considering', field);
-        if (srcObj[field].toString() === '[object ArrayBuffer]' && dstObj[field].toString() === '[object Object]') {
+        if (typeof(srcObj[field]) === 'object' && srcObj[field].toString() === '[object ArrayBuffer]') {
           console.log('ArrayBuffer');
           dstObj[field] = new ArrayBuffer(srcObj[field].byteLength);
           srcArr = new Int8Array(srcObj[field]);
