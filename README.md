@@ -52,4 +52,4 @@ To launch all three, you only need to type one command:
 * The starter-kit will detect each folder you create under `apps/` at startup, and add
     it to the launch screen on `http://localhost:8001/`
 * Post your reactions and questions on 
-    http://community.remotestorage.io/categories/getting-started
+    http://community.remotestorage.io/category/getting-started
