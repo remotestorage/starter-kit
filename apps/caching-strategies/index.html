@@ -11,17 +11,17 @@
     <h2>FLUSH</h2>
     <input id="text-flush" />
     <div id="current-flush"></div>
-    <input id="get-false-flush" type="submit" value="get (maxAge=undefined)" />
+    <input id="get-false-flush" type="submit" value="get (maxAge=false)" />
     <input id="get-1000-flush" type="submit" value="get (maxAge=1000)" />
     <h2>SEEN</h2>
     <input id="text-seen" />
     <div id="current-seen"></div>
-    <input id="get-false-seen" type="submit" value="get (maxAge=undefined)" />
+    <input id="get-false-seen" type="submit" value="get (maxAge=false)" />
     <input id="get-1000-seen" type="submit" value="get (maxAge=1000)" />
     <h2>ALL</h2>
     <input id="text-all" />
     <div id="current-all"></div>
-    <input id="get-false-all" type="submit" value="get (maxAge=undefined)" />
+    <input id="get-false-all" type="submit" value="get (maxAge=false)" />
     <input id="get-1000-all" type="submit" value="get (maxAge=1000)" />
   </body>
   <script src="remotestorage.js"></script>
@@ -44,8 +44,8 @@
       $('text-'+str).onkeyup = function() { privClient.storeFile('text/plain', str+'.txt', $('text-'+str).value); };
 
       $('get-false-'+str).onmousedown = function() {
-        $('current-'+str).innerHTML = 'getFile(\''+str+'.txt\', undefined) running...';
-        privClient.getFile(str+'.txt', undefined).then(function(obj) {
+        $('current-'+str).innerHTML = 'getFile(\''+str+'.txt\', false) running...';
+        privClient.getFile(str+'.txt', false).then(function(obj) {
           $('current-'+str).innerHTML = 'success:'+JSON.stringify(obj);
         }, function(obj) {
           $('current-'+str).innerHTML = 'failure:'+JSON.stringify(obj);
