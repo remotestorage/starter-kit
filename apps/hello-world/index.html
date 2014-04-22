@@ -25,7 +25,7 @@
     remoteStorage.displayWidget();
     remoteStorage.notes.onChange(displayNote);
 
-    $('text').onkeydown = function() {
+    $('text').onchange = function() {
       remoteStorage.notes.setNote($('text').value);
     };
   </script>
