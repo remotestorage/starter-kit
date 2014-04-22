@@ -9,7 +9,6 @@
       Please connect your remote storage.
     </p>
     Your name: <input id="text" />
-    <input id="save" type="submit" value="save" />
     <div id="current"></div>
   </body>
   <script src="remotestorage.js"></script>
@@ -26,14 +25,8 @@
     remoteStorage.displayWidget();
     remoteStorage.notes.onChange(displayNote);
 
-    $('save').onmousedown = function() {
+    $('text').onkeydown = function() {
       remoteStorage.notes.setNote($('text').value);
     };
-
-    $('text').addEventListener('keydown', function(e) {
-      if(e.keyCode == 13) {//<enter>
-        $('save').onmousedown();
-      }
-    }, false);
   </script>
 </html>
