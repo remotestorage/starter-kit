@@ -1,7 +1,7 @@
 {
   "name": "remotestorage-dev-kit",
   "desc": "Starter kit for remoteStorage app development",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "private": false,
   "license": "MIT",
   "repository": {
