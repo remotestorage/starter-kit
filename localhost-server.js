@@ -129,11 +129,15 @@ exports.createInstance = function(kv, config) {
     var scopes = decodeURIComponent(urlObj.query['scope']).split(' '),
     clientId = decodeURIComponent(urlObj.query['client_id']),
     redirectUri = decodeURIComponent(urlObj.query['redirect_uri']),
+    state = (urlObj.query['state'] ? decodeURIComponent(urlObj.query['state']) : undefined),
     clientIdToMatch,
     userName;
     var userName = urlObj.pathname.substring('/auth/'.length);
     createToken(userName, scopes, function(token) {
-      writeHtml(res, '<a href="'+toHtml(redirectUri)+'#access_token='+toHtml(token)+'">Allow</a>');
+      writeHtml(res, '<a href="'+toHtml(redirectUri)
+          + '#access_token='+toHtml(token)
+          + (state === undefined ? '' : '&state='+toHtml(state))
+          + '">Allow</a>');
     });
   }
 
