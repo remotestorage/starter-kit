@@ -9,15 +9,15 @@
       Please connect your remote storage.
     </p>
     <div>
-      FLUSH: <input id="text-flush" />
+      FLUSH: <input id="text-flush" /> <input type="submit" id="fetch-flush" value="fetch" />
       <div id="current-flush"></div>
     </div>
     <div>
-      SEEN (default): <input id="text-seen" />
+      SEEN (default): <input id="text-seen" /> <input type="submit" id="fetch-seen" value="fetch" />
       <div id="current-seen"></div>
     </div>
     <div>
-      ALL: <input id="text-all" />
+      ALL: <input id="text-all" /> <input type="submit" id="fetch-all" value="fetch" />
       <div id="current-all"></div>
     </div>
   </body>
@@ -64,5 +64,10 @@
     $('text-all').onchange = function() {
       remoteStorage.scope('/notes/').storeFile('text/plain', 'all/note.txt', $('text-all').value);
     };
+
+    $('fetch-flush').onclick = function() { remoteStorage.scope('/notes/').getFile('flush/note.txt', 0); };
+    $('fetch-seen').onclick = function() { remoteStorage.scope('/notes/').getFile('seen/note.txt', 0); };
+    $('fetch-all').onclick = function() { remoteStorage.scope('/notes/').getFile('all/note.txt', 0); };
+
   </script>
 </html>
