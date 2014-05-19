@@ -74,7 +74,7 @@ function launch() {
       http.createServer(serveMain).listen(config.portalPort);
       http.createServer(serveStorage).listen(config.storagePort);
       console.log('See http://' + config.host + ':' + config.portalPort + '/'
-          + ' or visit a remoteStorage.js-based app and connect with me@localhost:'+ config.portalPort + ' (special backdoor!)');
+          + ' or visit a http-hosted, remoteStorage.js-based app and connect with me@localhost:'+ config.portalPort + ' (special backdoor!)');
     }
   });
 }
