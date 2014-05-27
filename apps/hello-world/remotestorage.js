@@ -4746,7 +4746,7 @@ Math.uuid = function (len, radix) {
           } else {
             return this.autoMergeDocument(node);
           }
-        } else { // remotely created node
+        } else { // no local changes
           if (isFolder(node.path)) {
             if (node.remote.itemsMap !== undefined) {
               node.common = node.remote;
@@ -4927,11 +4927,11 @@ Math.uuid = function (len, radix) {
       var parentPath;
       var pathsFromRoot = this.local._getInternals().pathsFromRoot(path);
 
-      if (!isFolder(path)) {
+      if (isFolder(path)) {
+        paths = [path];
+      } else {
         parentPath = pathsFromRoot[1];
         paths = [path, parentPath];
-      } else {
-        paths = [path];
       }
 
       var promise = this.local.getNodes(paths).then(function(nodes) {
@@ -5071,8 +5071,7 @@ Math.uuid = function (len, radix) {
         successful: (series === 2 || statusCode === 304 || statusCode === 412 || statusCode === 404),
         conflict:   (statusCode === 412),
         unAuth:     (statusCode === 401 || statusCode === 402 ||statusCode === 403),
-        notFound:   (statusCode === 404),
-        changed:    (statusCode !== 304)
+        notFound:   (statusCode === 404)
       };
     },
 
@@ -5085,26 +5084,22 @@ Math.uuid = function (len, radix) {
         }
       }
 
-      if (status.changed) {
-        return this.completeFetch(path, bodyOrItemsMap, contentType, revision).then(function(dataFromFetch) {
-          if (isFolder(path)) {
-            if (this.corruptServerItemsMap(bodyOrItemsMap)) {
-              RemoteStorage.log('[Sync] WARNING: Discarding corrupt folder description from server for ' + path);
-              return false;
-            } else {
-              return this.markChildren(path, bodyOrItemsMap, dataFromFetch.toBeSaved, dataFromFetch.missingChildren).then(function() {
-                return true;
-              });
-            }
+      return this.completeFetch(path, bodyOrItemsMap, contentType, revision).then(function(dataFromFetch) {
+        if (isFolder(path)) {
+          if (this.corruptServerItemsMap(bodyOrItemsMap)) {
+            RemoteStorage.log('[Sync] WARNING: Discarding corrupt folder description from server for ' + path);
+            return false;
           } else {
-            return this.local.setNodes(this.flush(dataFromFetch.toBeSaved)).then(function() {
+            return this.markChildren(path, bodyOrItemsMap, dataFromFetch.toBeSaved, dataFromFetch.missingChildren).then(function() {
               return true;
             });
           }
-        }.bind(this));
-      } else {
-        return promising().fulfill(true);
-      }
+        } else {
+          return this.local.setNodes(this.flush(dataFromFetch.toBeSaved)).then(function() {
+            return true;
+          });
+        }
+      }.bind(this));
     },
 
     handleResponse: function(path, action, statusCode, bodyOrItemsMap, contentType, revision) {
