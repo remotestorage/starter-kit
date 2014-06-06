@@ -55,7 +55,7 @@ function serveMain(req, res) {
 
 function serveStorage(req, res) {
   var urlObj = url.parse(req.url, true), userAddress, userName;
-  console.log(urlObj);
+  console.log(urlObj.pathname);
   if(urlObj.pathname.substring(0, '/storage/'.length) == '/storage/') {
     server.storage(req, res);
   } else {
