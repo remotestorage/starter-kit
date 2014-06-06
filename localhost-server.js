@@ -14,7 +14,7 @@ exports.createInstance = function(kv, config) {
   };
 
   var rootScope,
-    specVersion = 'draft-dejong-remotestorage-01',
+    specVersion = 'draft-dejong-remotestorage-02',
     remotestorageServer = new RemotestorageServer(specVersion, tokenStore, dataStore);
 
   if (specVersion === 'draft-dejong-remotestorage-00' || specVersion === 'draft-dejong-remotestorage-01') {
