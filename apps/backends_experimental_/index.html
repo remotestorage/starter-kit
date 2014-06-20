@@ -14,57 +14,18 @@
   </head>
   <body>
     <article>
-      <p>(tested with:
-      <a href="https://github.com/remotestorage/starter-kit">starter-kit</a>,
-      <a href="https://github.com/michielbdejong/restore">reStore</a>,
-      <a href="https://5apps.com/storage">5apps</a>,
-      <a href="https://drive.google.com/">GoogleDrive</a>,
-      <a href="https://www.dropbox.com/">Dropbox</a>)</p>
+      <p>This app is included here as example code; it only works when hosted on
+      <a href="https://export.5apps.com/">export.5apps.com</a>. Get your own API keys from
+      <a href="https://www.dropbox.com/developers/apps/">Dropbox</a> and
+      <a href="https://console.developers.google.com/">GoogleDrive</a> to get this working on other URLs.</p>
       <ul>
         <li>(root)<div id="path-"><input type="submit" value=">" onclick="expandOne('');"></div></li>
     </article>
   </body>
-
-  <!-- core -->
-  <script src="vendor/remotestorage/lib/promising.js"></script>
-  <script src="vendor/remotestorage/remotestorage.js"></script>
-  <script src="vendor/remotestorage/eventhandling.js"></script>
-  <script src="vendor/remotestorage/wireclient.js"></script>
-  <script src="vendor/remotestorage/discover.js"></script>
-  <script src="vendor/remotestorage/authorize.js"></script>
-  <script src="vendor/remotestorage/access.js"></script>
-  <script src="vendor/remotestorage/env.js"></script>
-
-  <!-- widget -->
-  <script src="vendor/remotestorage/i18n.js"></script>
-  <script src="vendor/remotestorage/assets.js"></script>
-  <script src="vendor/remotestorage/widget.js"></script>
-  <script src="vendor/remotestorage/view.js"></script>
-  
-  <!-- baseclient -->
-  <script src="vendor/remotestorage/lib/tv4.js"></script>
-  <script src="vendor/remotestorage/lib/Math.uuid.js"></script>
-  <script src="vendor/remotestorage/baseclient.js"></script>
-  <script src="vendor/remotestorage/baseclient/types.js"></script>
-
-  <!-- caching -->
-  <script src="vendor/remotestorage/caching.js"></script>
-  <script src="vendor/remotestorage/sync.js"></script>
-  <script src="vendor/remotestorage/cachinglayer.js"></script>
-  <script src="vendor/remotestorage/indexeddb.js"></script>
-  <script src="vendor/remotestorage/localstorage.js"></script>
-  <script src="vendor/remotestorage/inmemorystorage.js"></script>
-
-  <!-- the rest: -->
-  <script src="vendor/remotestorage/modules.js"></script>
-  <script src="vendor/remotestorage/debug/inspect.js"></script>
-  <script src="vendor/remotestorage/legacy.js"></script>
-  <script src="vendor/remotestorage/googledrive.js"></script>
-  <script src="vendor/remotestorage/dropbox.js"></script>
+  <script src="remotestorage.js"></script>
   <script>
     RemoteStorage._log = true;
     RemoteStorage.prototype.reset = function() { indexedDB.deleteDatabase('remotestorage'); localStorage.clear(); };
-    remoteStorage = new RemoteStorage();
   </script>
   <script>
     function d(p) {
@@ -74,19 +35,40 @@
         console.log(a);
       });
     }
-    
     remoteStorage.stopSync();
-
     remoteStorage.enableLog();
+
+
+
+
+
+    /*************************************/
+    /*   ACTIVATE GoogleDrive BACKEND:   */
+    /*************************************/
+
     remoteStorage.setApiKeys('googledrive', {
       //see https://console.developers.google.com/project/appunhosted/apiui/credential
       //and https://code.google.com/apis/console/b/0/?noredirect&pli=1#project:709507725318:overview
       client_id: '709507725318-3mt4ke1d4tvkc7ktbjvru3csif4nsk67.apps.googleusercontent.com'
     });
+
+
+
+
+
+    /************************************/
+    /*    ACTIVATE Dropbox BACKEND:     */
+    /************************************/
+
     remoteStorage.setApiKeys('dropbox', {
       //see https://www.dropbox.com/developers/apps/info/cybbbiarf4dkrce
       api_key: 'cybbbiarf4dkrce'
     });
+
+
+
+
+
     remoteStorage.displayWidget();
     remoteStorage.access.claim('*', 'r');
     function expandOne(path) {
