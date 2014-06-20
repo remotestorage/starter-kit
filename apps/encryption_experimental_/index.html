@@ -2,72 +2,35 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>remotestorage.js Caching Strategies</title>
+    <title>rs.js starter-kit "hello world" example</title>
   </head>
   <body>
-    <p id="please-connect">
+    <p>
+      Note that this app uses the <a href="https://github.com/remotestorage/remotestorage.js/pull/724">widget-cipher</a> feature
+      which has not been merged in to master yet.
       Please connect your remote storage.
     </p>
-    <div>
-      FLUSH: <input id="text-flush" /> <input type="submit" id="fetch-flush" value="fetch" />
-      <div id="current-flush"></div>
-    </div>
-    <div>
-      SEEN (default): <input id="text-seen" /> <input type="submit" id="fetch-seen" value="fetch" />
-      <div id="current-seen"></div>
-    </div>
-    <div>
-      ALL: <input id="text-all" /> <input type="submit" id="fetch-all" value="fetch" />
-      <div id="current-all"></div>
-    </div>
+    Your name: <input id="text" />
+    <div id="current"></div>
   </body>
-  <script src="remotestorage.js"></script>
+  <script src="remotestorage.js"></script><!-- built from https://github.com/remotestorage/remotestorage.js/pull/724 -->
+  <script src="sjcl.js"></script><!-- from http://bitwiseshiftleft.github.io/sjcl/ -->
+  <script src="credentialsstore.js"></script><!-- from https://github.com/remotestorage/modules/blob/master/src/utils/credentialsstore.js -->
+  <script src="notes.js"></script>
   <script>
     function $(id) { return document.getElementById(id); }
 
-    function displayNote(which, text) {
-      $('current-'+which).innerHTML = text ? 'Hello '+text : '';    
+    function displayNote() {
+      var text = remoteStorage.notes.getNote();
+      $('current').innerHTML = text ? 'Hello '+text : '';    
     }
 
     remoteStorage.access.claim('notes', 'rw');
-    remoteStorage.displayWidget();
-    remoteStorage.on('connected', function() {
-      $('please-connect').style.display = 'none';
-    });
-    RemoteStorage.config.changeEvents = {
-      local: true,
-      window: true,
-      remote: true,
-      conflict: true
+    remoteStorage.displayWidget({encryption: true});
+    remoteStorage.notes.onChange(displayNote);
+
+    $('text').onchange = function() {
+      remoteStorage.notes.setNote($('text').value);
     };
-    remoteStorage.scope('/notes/').cache('flush/', 'FLUSH');
-    remoteStorage.scope('/notes/').cache('seen/', 'SEEN');
-    remoteStorage.scope('/notes/').cache('all/', 'ALL');
-    remoteStorage.scope('/notes/').on('change', function (e) {
-      //see https://github.com/remotestorage/remotestorage.js/issues/553
-      e.path = e.relativePath;
-      delete e.relativePath;
-      console.log('change event with origin', e.origin, e);
-      if (e.path === 'flush/note.txt') { displayNote('flush', e.newValue); }
-      if (e.path === 'seen/note.txt') { displayNote('seen', e.newValue); }
-      if (e.path === 'all/note.txt') { displayNote('all', e.newValue); }
-    });
-
-    $('text-flush').onchange = function() {
-      remoteStorage.scope('/notes/').storeFile('text/plain', 'flush/note.txt', $('text-flush').value);
-    };
-
-    $('text-seen').onchange = function() {
-      remoteStorage.scope('/notes/').storeFile('text/plain', 'seen/note.txt', $('text-seen').value);
-    };
-
-    $('text-all').onchange = function() {
-      remoteStorage.scope('/notes/').storeFile('text/plain', 'all/note.txt', $('text-all').value);
-    };
-
-    $('fetch-flush').onclick = function() { remoteStorage.scope('/notes/').getFile('flush/note.txt', 0); };
-    $('fetch-seen').onclick = function() { remoteStorage.scope('/notes/').getFile('seen/note.txt', 0); };
-    $('fetch-all').onclick = function() { remoteStorage.scope('/notes/').getFile('all/note.txt', 0); };
-
   </script>
 </html>
