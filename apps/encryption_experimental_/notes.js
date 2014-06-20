@@ -19,10 +19,10 @@ RemoteStorage.defineModule('notes', function(privateClient, publicClient) {
   return {
     exports: {
       getNote: function() {
-        return credentialsStore.getConfig(remoteStorage.widget.userPwd);
+        return credentialsStore.getConfig(remoteStorage.widget.view.userSecretKey);
       },
       setNote: function(text) {
-        return credentialsStore.getConfig(remoteStorage.widget.userPwd, text);
+        return credentialsStore.getConfig(remoteStorage.widget.view.userSecretKey, text);
       }
     }
   };
