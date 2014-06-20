@@ -1,9 +1,9 @@
 RemoteStorage.defineModule('notes', function(privateClient, publicClient) {
-  privateClient.declareType('note', {
+  privateClient.declareType('config', {
     type: 'object',
     properties: {
       text: { type: 'string' }
-      }
+      },
       required: ['text']
     });
   privateClient.on('change', function(e) {
@@ -14,15 +14,27 @@ RemoteStorage.defineModule('notes', function(privateClient, publicClient) {
         cb(e);
       }
     }
+    for (var i=0; i<changeHandlers.length; i++) {
+      changeHandlers[i](e);
+    }
   });
-  var credentialsStore = new CredentialsStore('notes', privClient);
+  var credentialsStore = new CredentialsStore('notes', privateClient), changeHandlers = [];
   return {
     exports: {
       getNote: function() {
-        return credentialsStore.getConfig(remoteStorage.widget.view.userSecretKey);
+        return credentialsStore.getConfig(remoteStorage.widget.view.userSecretKey).then(function(obj) {
+          return obj.text;
+        }, function(err) {
+          return '';
+        });
       },
       setNote: function(text) {
-        return credentialsStore.getConfig(remoteStorage.widget.view.userSecretKey, text);
+        return credentialsStore.setConfig(remoteStorage.widget.view.userSecretKey, {
+          text: text
+        });
+      },
+      onChange: function(handler) {
+        changeHandlers.push(handler);
       }
     }
   };
