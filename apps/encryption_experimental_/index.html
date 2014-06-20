@@ -7,7 +7,7 @@
   <body>
     <p>
       Note that this app uses the <a href="https://github.com/remotestorage/remotestorage.js/pull/724">widget-cipher</a> feature
-      which has not been merged in to master yet.
+      which has not been merged into rs.js master yet.
       Please connect your remote storage.
     </p>
     Your name: <input id="text" />
@@ -22,7 +22,7 @@
 
     function displayNote() {
       var text = remoteStorage.notes.getNote();
-      $('current').innerHTML = text ? 'Hello '+text : '';    
+      $('current').innerHTML = text ? 'Hello '+text : '';
     }
 
     remoteStorage.access.claim('notes', 'rw');

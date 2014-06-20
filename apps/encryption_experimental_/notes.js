@@ -1,7 +1,4 @@
 RemoteStorage.defineModule('notes', function(privateClient, publicClient) {
-  if(!CredentialsStore) {
-    throw new Error('please include utils/credentialsstore.js');
-  }
   privateClient.declareType('note', {
     type: 'object',
     properties: {
