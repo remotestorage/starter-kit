@@ -14,6 +14,14 @@
   <script src="remotestorage.js"></script>
   <script src="notes.js"></script>
   <script>
+    RemoteStorage.config.logging = true;
+    RemoteStorage.config.changeEvents = {
+      local: true,
+      window: true,
+      remote: true,
+      conflict: true
+    };
+
     function $(id) { return document.getElementById(id); }
 
     function displayNote() {
@@ -25,7 +33,8 @@
     remoteStorage.displayWidget();
     remoteStorage.notes.onChange(displayNote);
 
-    $('text').onchange = function() {
+    $('text').onkeyup = function() {
+      console.log('calling: remoteStorage.notes.setNote(\''+$('text').value+'\');');
       remoteStorage.notes.setNote($('text').value);
     };
   </script>
