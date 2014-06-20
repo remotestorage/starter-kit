@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>export.5apps.com</title>
+    <style>
+      body { font:15px sans-serif; line-height:1.4em; color:#222 }
+      nav {float:left; margin:3em}
+      nav div { border-style:solid; border-radius:1em; margin: 1em; padding: 1em}
+      nav div table tr td img { width:4em; height:4em; border-radius:1em }
+      article table tr td img { width:3em; height:3em; border-radius:1em }
+      article {float:left; margin-top:4em; padding:1em; border-style:solid; border-radius:1em}
+    </style>
+  </head>
+  <body>
+    <article>
+      <p>(tested with:
+      <a href="https://github.com/remotestorage/starter-kit">starter-kit</a>,
+      <a href="https://github.com/michielbdejong/restore">reStore</a>,
+      <a href="https://5apps.com/storage">5apps</a>,
+      <a href="https://drive.google.com/">GoogleDrive</a>,
+      <a href="https://www.dropbox.com/">Dropbox</a>)</p>
+      <ul>
+        <li>(root)<div id="path-"><input type="submit" value=">" onclick="expandOne('');"></div></li>
+    </article>
+  </body>
+
+  <!-- core -->
+  <script src="vendor/remotestorage/lib/promising.js"></script>
+  <script src="vendor/remotestorage/remotestorage.js"></script>
+  <script src="vendor/remotestorage/eventhandling.js"></script>
+  <script src="vendor/remotestorage/wireclient.js"></script>
+  <script src="vendor/remotestorage/discover.js"></script>
+  <script src="vendor/remotestorage/authorize.js"></script>
+  <script src="vendor/remotestorage/access.js"></script>
+  <script src="vendor/remotestorage/env.js"></script>
+
+  <!-- widget -->
+  <script src="vendor/remotestorage/i18n.js"></script>
+  <script src="vendor/remotestorage/assets.js"></script>
+  <script src="vendor/remotestorage/widget.js"></script>
+  <script src="vendor/remotestorage/view.js"></script>
+  
+  <!-- baseclient -->
+  <script src="vendor/remotestorage/lib/tv4.js"></script>
+  <script src="vendor/remotestorage/lib/Math.uuid.js"></script>
+  <script src="vendor/remotestorage/baseclient.js"></script>
+  <script src="vendor/remotestorage/baseclient/types.js"></script>
+
+  <!-- caching -->
+  <script src="vendor/remotestorage/caching.js"></script>
+  <script src="vendor/remotestorage/sync.js"></script>
+  <script src="vendor/remotestorage/cachinglayer.js"></script>
+  <script src="vendor/remotestorage/indexeddb.js"></script>
+  <script src="vendor/remotestorage/localstorage.js"></script>
+  <script src="vendor/remotestorage/inmemorystorage.js"></script>
+
+  <!-- the rest: -->
+  <script src="vendor/remotestorage/modules.js"></script>
+  <script src="vendor/remotestorage/debug/inspect.js"></script>
+  <script src="vendor/remotestorage/legacy.js"></script>
+  <script src="vendor/remotestorage/googledrive.js"></script>
+  <script src="vendor/remotestorage/dropbox.js"></script>
+  <script>
+    RemoteStorage._log = true;
+    RemoteStorage.prototype.reset = function() { indexedDB.deleteDatabase('remotestorage'); localStorage.clear(); };
+    remoteStorage = new RemoteStorage();
+  </script>
+  <script>
+    function d(p) {
+      p.then(function(a) {
+        console.log(a);
+      }, function(a) {
+        console.log(a);
+      });
+    }
+    
+    remoteStorage.stopSync();
+
+    remoteStorage.enableLog();
+    remoteStorage.setApiKeys('googledrive', {
+      //see https://console.developers.google.com/project/appunhosted/apiui/credential
+      //and https://code.google.com/apis/console/b/0/?noredirect&pli=1#project:709507725318:overview
+      client_id: '709507725318-3mt4ke1d4tvkc7ktbjvru3csif4nsk67.apps.googleusercontent.com'
+    });
+    remoteStorage.setApiKeys('dropbox', {
+      //see https://www.dropbox.com/developers/apps/info/cybbbiarf4dkrce
+      api_key: 'cybbbiarf4dkrce'
+    });
+    remoteStorage.displayWidget();
+    remoteStorage.access.claim('*', 'r');
+    function expandOne(path) {
+      remoteStorage.scope('/').getListing(path, 1000000).then(function(listing) {
+        var i, id, str = '<ul>', parentId;
+        parentId = 'path-'+(path.split('-').join('--').split('/').join('-'));
+        for (i in listing) {
+          id = parentId+(i.split('-').join('--').split('/').join('-'));
+          escapedPath = (path+i).split('\'').join('\\\'');
+          if (i.substr(-1) === '/') {
+            str += '<li>'+i+'<div id="'+id+'"><input type="submit" value=">" onclick="expandOne(\''+escapedPath+'\');"></div></li>';
+          } else {
+            str += '<li>'+i+'<div id="path-'+id+'"><input type="submit" value="v" onclick="download(\''+escapedPath+'\');"></div></li>';
+          }
+        }
+        console.log('expandOne', listing, parentId, str+'</ul>');
+        document.getElementById(parentId).innerHTML = str+'</ul>';
+      });
+    }
+    function download(path) {
+      console.log('download', path);
+      remoteStorage.scope('/').getFile(path, 1000000).then(function(obj) {
+        alert(JSON.stringify(obj));
+      });
+    }
+  </script>
+</html>
