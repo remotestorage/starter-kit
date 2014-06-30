@@ -1,4 +1,4 @@
-/** remotestorage.js 0.10.0-beta3, http://remotestorage.io, MIT-licensed **/
+/** remotestorage.js 0.10.0, http://remotestorage.io, MIT-licensed **/
 
 /** FILE: lib/promising.js **/
 (function(global) {
@@ -5989,6 +5989,9 @@ Math.uuid = function (len, radix) {
 
   var methods = {
 
+    // TODO: improve our code structure so that this function
+    // could call sync.queueGetRequest directly instead of needing
+    // this hacky third parameter as a callback
     get: function(path, maxAge, queueGetRequest) {
       var promise = promising();
 
