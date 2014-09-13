@@ -38,8 +38,12 @@ To launch all three, you only need to type one command:
 
 * Visit `http://localhost:8001/` and click on the "hello-world" link
 * Open the web console (Ctrl-Shift-K in FF, Ctrl-Shift-I in Chrome, F12 in IE)
-* see how the hello-world app runs on port 8002, yet the AJAX requests go to your
-    storage for `me@localhost:8001`, on storage port 8000.
+* There are now various server origins interacting:
+  * the API of your remoteStorage server is on http://localhost:8000/storage/me/
+  * the html page you used with the links to the apps runs on http://localhost:8001/
+  * the actual apps run on http://localhost:8002/, http://localhost:8003/, etc.
+* see how the AJAX requests go to the remoteStorage API on port 8000, which is different
+    from the origin of the app you are viewing. It is a cross-origin AJAX request.
 * This is of course useless if it's on the same host, but you can see how this is
     a powerful architecture change if not only the port but also the domain name
     differs between the app and the storage: netizens can host their own data on
