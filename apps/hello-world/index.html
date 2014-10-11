@@ -12,26 +12,26 @@
       hello world sample
     </h1>
       <p id="connection-instructions" style="text-align: center;">
-        Please use the widget on the top right to 
-        connect to the starter kit remote storage 
+        Please use the widget on the top right to
+        connect to the starter kit remote storage
         server first using 'me@localhost:8001'.
-      </p>    
+      </p>
     </div>
 
     <div id="hello-world" style="margin: 2% 10%;">
       <div>Your name: <input id="text" /></div>
 
-      <div id="current" style="margin-top: 2%; font-size: 1.4em;"></div>    
+      <div id="current" style="margin-top: 2%; font-size: 1.4em;"></div>
 
       <div style="margin-top: 2%; padding: 5%; background-color: #ff872e;">
-        Type in your name above. After you connect to your remote storage, 
+        Type in your name above. After you connect to your remote storage,
         your name will be stored in a remote storage file named "note.txt".
         <br /><br />
-        Each time you change the contents of the textbox, 
+        Each time you change the contents of the textbox,
         the remote file contents are updated.
         <br /><br />
         Every 10 seconds, the remoteStorage client is checking
-        for changes in the remoteStorage file contents and 
+        for changes in the remoteStorage file contents and
         updating this page.
         <br /><br/>
         You can check this by opening this page in another browser window
@@ -60,7 +60,7 @@
 
     function displayNote() {
       var text = remoteStorage.notes.getNote();
-      $('current').innerHTML = text ? 'Hello '+text : '';    
+      $('current').innerHTML = text ? 'Hello '+text : '';
     }
 
     remoteStorage.access.claim('notes', 'rw');
