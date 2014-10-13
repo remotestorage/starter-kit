@@ -414,7 +414,9 @@
         this._emit('error', new RemoteStorage.DiscoveryError("User address doesn't contain an @."));
         return;
       }
-      this.remote.configure(userAddress);
+      this.remote.configure({
+        userAddress: userAddress
+      });
       this._emit('connecting');
 
       var discoveryTimeout = setTimeout(function() {
@@ -428,7 +430,12 @@
           return;
         }
         this._emit('authing');
-        this.remote.configure(userAddress, href, storageApi, undefined, properties);
+        this.remote.configure({
+          userAddress: userAddress,
+          href: href,
+          storageApi: storageApi,
+          properties: properties
+        });
         if (! this.remote.connected) {
           if (authURL) {
             this.authorize(authURL);
@@ -453,7 +460,13 @@
      */
     disconnect: function() {
       if (this.remote) {
-        this.remote.configure(null, null, null, null, null);
+        this.remote.configure({
+          userAddress: null,
+          href: null,
+          storageApi: null,
+          token: null,
+          properties: null
+        });
       }
       this._setGPD({
         get: this._pendingGPD('get'),
@@ -1354,7 +1367,7 @@
 
     onErrorCb = function(error){
       if (error instanceof RemoteStorage.Unauthorized) {
-        this.configure(undefined, undefined, undefined, null);
+        this.configure({ token: null });
       }
     }.bind(this);
     rs.on('error', onErrorCb);
@@ -1363,7 +1376,7 @@
       try { settings = JSON.parse(localStorage[SETTINGS_KEY]); } catch(e) {}
       if (settings) {
         setTimeout(function() {
-          this.configure(settings.userAddress, settings.href, settings.storageApi, settings.token, settings.properties);
+          this.configure(settings);
         }.bind(this), 0);
       }
     }
@@ -1491,23 +1504,48 @@
       return promise;
     },
 
-    configure: function(userAddress, href, storageApi, token, properties) {
-      if (typeof(userAddress) !== 'undefined') {
-        this.userAddress = userAddress;
+    /**
+     *
+     * Method: configure
+     *
+     * Sets the userAddress, href, storageApi, token, and properties
+     * of a remote store. Also sets connected and online to true and
+     * emits the 'connected' event, if both token and href are present.
+     *
+     * Parameters:
+     *   settings - an object that may contain userAddress (string or null),
+     *              href (string or null), storageApi (string or null), token (string
+     *              or null), and/or properties (the JSON-parsed properties object
+     *              from the user's WebFinger record, see section 10 of
+     *              http://tools.ietf.org/html/draft-dejong-remotestorage-03
+     *              or null).
+     *              Fields that are not included (i.e. `undefined`), stay at
+     *              their current value. To set a field, include that field
+     *              with a `string` value. To reset a field, for instance when
+     *              the user disconnected their storage, or you found that the
+     *              token you have has expired, simply set that field to `null`.
+     */
+    configure: function(settings) {
+      if (typeof settings !== 'object') {
+        throw new Error('WireClient configure settings parameter should be an object');
       }
-      if (typeof(href) !== 'undefined') {
-        this.href = href;
+      if (typeof settings.userAddress !== 'undefined') {
+        this.userAddress = settings.userAddress;
       }
-      if (typeof(storageApi) !== 'undefined') {
-        this.storageApi = storageApi;
+      if (typeof settings.href !== 'undefined') {
+        this.href = settings.href;
       }
-      if (typeof(token) !== 'undefined') {
-        this.token = token;
+      if (typeof settings.storageApi !== 'undefined') {
+        this.storageApi = settings.storageApi;
       }
-      if (typeof(properties) !== 'undefined') {
-        this.properties = properties;
+      if (typeof settings.token !== 'undefined') {
+        this.token = settings.token;
       }
-      if (typeof(this.storageApi) !== 'undefined') {
+      if (typeof settings.properties !== 'undefined') {
+        this.properties = settings.properties;
+      }
+
+      if (typeof this.storageApi !== 'undefined') {
         this._storageApi = STORAGE_APIS[this.storageApi] || API_HEAD;
         this.supportsRevs = this._storageApi >= API_00;
       }
@@ -1527,9 +1565,6 @@
           properties: this.properties
         });
       }
-      RS.WireClient.configureHooks.forEach(function(hook) {
-        hook.call(this);
-      }.bind(this));
     },
 
     stopWaitingForToken: function() {
@@ -1700,8 +1735,6 @@
     }
   });
 
-  RS.WireClient.configureHooks = [];
-
   RS.WireClient._rs_init = function(remoteStorage) {
     hasLocalStorage = remoteStorage.localStorageAvailable();
     remoteStorage.remote = new RS.WireClient(remoteStorage);
@@ -1863,7 +1896,9 @@
   RemoteStorage.ImpliedAuth = function(storageApi, redirectUri) {
     RemoteStorage.log('ImpliedAuth proceeding due to absent authURL; storageApi = ' + storageApi + ' redirectUri = ' + redirectUri);
     // Set a fixed access token, signalling to not send it as Bearer
-    remoteStorage.remote.configure(undefined, undefined, undefined, RemoteStorage.Authorize.IMPLIED_FAKE_TOKEN);
+    remoteStorage.remote.configure({
+      token: RemoteStorage.Authorize.IMPLIED_FAKE_TOKEN
+    });
     document.location = redirectUri;
   };
 
@@ -1936,7 +1971,9 @@
           throw "Authorization server errored: " + params.error;
         }
         if (params.access_token) {
-          remoteStorage.remote.configure(undefined, undefined, undefined, params.access_token);
+          remoteStorage.remote.configure({
+            token: params.access_token
+          });
           authParamsUsed = true;
         }
         if (params.remotestorage) {
@@ -7368,10 +7405,10 @@ Math.uuid = function (len, radix) {
     connected: false,
     online: true,
 
-    configure: function(_x, _y, _z, token) { // parameter list compatible with WireClient
-      if (token) {
-        localStorage['remotestorage:googledrive:token'] = token;
-        this.token = token;
+    configure: function(settings) { // settings parameter compatible with WireClient
+      if (settings.token) {
+        localStorage['remotestorage:googledrive:token'] = settings.token;
+        this.token = settings.token;
         this.connected = true;
         this._emit('connected');
       } else {
@@ -7919,7 +7956,13 @@ Math.uuid = function (len, radix) {
 
     onErrorCb = function(error){
       if (error instanceof RemoteStorage.Unauthorized) {
-        self.configure(null,null,null,null);
+        self.configure({
+          userAddress: null,
+          href: null,
+          storageApi: null,
+          token: null,
+          options: null
+        });
       }
     };
 
@@ -7937,7 +7980,7 @@ Math.uuid = function (len, radix) {
         settings = JSON.parse(localStorage[SETTINGS_KEY]);
       } catch(e){}
       if (settings) {
-        this.configure(settings.userAddress, undefined, undefined, settings.token);
+        this.configure(settings);
       }
       try {
         this._itemRefs = JSON.parse(localStorage[ SETTINGS_KEY+':shares' ]);
@@ -7967,13 +8010,13 @@ Math.uuid = function (len, radix) {
       }
     },
     /**
-     * Method : configure(userAdress, x, x, token)
+     * Method : configure(settings)
      *   accepts its parameters according to the wireClient
-     *   set's the connected flag
+     *   sets the connected flag
      **/
-    configure: function(userAddress, href, storageApi, token) {
-      if (typeof token !== 'undefined') { this.token = token; }
-      if (typeof userAddress !== 'undefined') { this.userAddress = userAddress; }
+    configure: function(settings) {
+      if (typeof settings.userAddress !== 'undefined') { this.userAddress = settings.userAddress; }
+      if (typeof settings.token !== 'undefined') { this.token = settings.token; }
 
       if (this.token) {
         this.connected = true;
@@ -7988,8 +8031,10 @@ Math.uuid = function (len, radix) {
         this.connected = false;
       }
       if (hasLocalStorage){
-        localStorage[SETTINGS_KEY] = JSON.stringify( { token: this.token,
-                                                       userAddress: this.userAddress } );
+        localStorage[SETTINGS_KEY] = JSON.stringify({
+          userAddress: this.userAddress,
+          token: this.token
+        });
       }
     },
     
