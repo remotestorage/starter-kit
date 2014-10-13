@@ -1,7 +1,6 @@
 var fs = require('fs'),
   http = require('http'),
-  url = require('url'),
-  static = require('node-static');
+  url = require('url');
 
 var config = {
   defaultUserName: 'me',
@@ -12,18 +11,53 @@ var config = {
   apps: {}
 };
 
-function staticServer(path) {
-  var file = new static.Server(path);
+var server;
+
+function contentTypeFromFilename(fileName) {
+  if (fileName.substr(-5) === '.html') {
+    return 'text/html';
+  } else if (fileName.substr(-3) === '.js') {
+    return 'application/javascript';
+  } else {
+    return 'text/plain';
+  }
+}
+
+function loadFiles(dir, port) {
+  var list = fs.readdirSync(dir)
+  list.forEach(function(fileName) {
+    var filePath = dir + '/' + fileName;
+    var stat = fs.statSync(filePath);
+    if (stat && stat.isDirectory()) {
+      loadFiles(filePath, port);
+    } else {
+     console.log('loading initial file for port ' + port.toString() + ' from ' + filePath);
+      server.backdoorSet('me',
+          '/storage/me/public/apps/' + port.toString() + filePath,
+          contentTypeFromFilename(fileName),
+          fs.readFileSync(filePath),
+          function(err, revision) {
+            console.log('created', filePath, err, revision);
+          });
+    }
+  });
+}
+
+function websiteServer(filePath, port) {
+  loadFiles(filePath, port);
   return function (req, res) {
-    req.addListener('end', function () {
-      file.serve(req, res);
-    }).resume();
+    req.url = '/storage/me/public/apps/' + port.toString() + req.url;
+    if (req.url.substr(-1) === '/') {
+      req.url += 'index.html';
+    }
+    console.log('websiteServer', filePath, port, 'redirected request to ',req.url);
+    return serveStorage(req, res);
   };
 }
 
 function setApps(listing) {
   for(var i=0; i<listing.length; i++) {
-    var listener = staticServer('./apps/'+listing[i]);
+    var listener = websiteServer('./apps/'+listing[i], config.firstAppPort+i);
     http.createServer(listener).listen(config.firstAppPort+i);
     config.apps['http://'+config.host+':'+(config.firstAppPort+i)+'/'] = listing[i];
   }
@@ -36,8 +70,6 @@ var kv = (function() {
     get: function(k, cb) { cb(null, store[k]); }
   };
  })();
-
-var server;
 
 function serveMain(req, res) {
   var urlObj = url.parse(req.url, true), userAddress, userName;
@@ -69,8 +101,8 @@ function launch() {
     if(err) {
       console.log('make sure ./apps/ exists');
     } else {
-      setApps(listing);
       server = require('./localhost-server').createInstance(kv, config);
+      setApps(listing);
       http.createServer(serveMain).listen(config.portalPort);
       http.createServer(serveStorage).listen(config.storagePort);
       console.log('See http://' + config.host + ':' + config.portalPort + '/'

@@ -147,6 +147,9 @@ exports.createInstance = function(kv, config) {
     oauth: oauth,
     storage: function(req, res) {
       return remotestorageServer.storage(req, res);
+    },
+    backdoorSet: function(username, path, body, contentType, cb) {
+      return remotestorageServer.backdoorSet(username, path, body, contentType, cb);
     }
   };
 };
