@@ -1,0 +1,6 @@
+{
+  "name": "Munchhau",
+  "href": "https://myfavoritedrinks.5apps.com/",
+  "img": "/img/music.png",
+  "assets": ["app.js", "drink.jpg", "index.html", "manifest.webapp", "README.md", "remotestorage.js", "remotestorage-module.js", "style.css"]
+}

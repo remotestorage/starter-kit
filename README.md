@@ -1,3 +1,6 @@
+* the portal can be gh:unhosted/store; if it sees no remoteStorage.userAddress is set, it can default to me@localhost:8001, and oauth dialog can auto-approve that
+* prefill apps list with manifests that point to web-authored origins
+
 remoteStorage Starter Kit
 =========================
 

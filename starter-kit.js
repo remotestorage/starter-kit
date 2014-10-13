@@ -8,8 +8,9 @@ var config = {
   webAuthoringPath: '/public/www/',
   host: 'localhost',
   storagePort: 8000,
-  portalPort: 8001,
-  firstAppPort: 8002,
+  mainPort: 8001,
+  portalPort: 8002,
+  firstAppPort: 8003,
   apps: {}
 };
 
@@ -18,6 +19,8 @@ var server;
 function contentTypeFromFilename(fileName) {
   if (fileName.substr(-5) === '.html') {
     return new Buffer('text/html', 'utf-8');
+  } else if (fileName.substr(-4) === '.css') {
+    return new Buffer('text/css', 'utf-8');
   } else if (fileName.substr(-3) === '.js') {
     return new Buffer('application/javascript', 'utf-8');
   } else {
@@ -69,7 +72,12 @@ function setApps(listing) {
     config.apps['http://'+config.host+':'+(config.firstAppPort+i)+'/'] = listing[i];
   }
 }
-  
+
+function setPortal() {
+  var listener = websiteServer('./portal/', config.portalPort);
+  http.createServer(listener).listen(config.portalPort);
+}
+
 var kv = (function() {
   var store = {};
   return {
@@ -110,10 +118,11 @@ function launch() {
     } else {
       server = require('./localhost-server').createInstance(kv, config);
       setApps(listing);
-      http.createServer(serveMain).listen(config.portalPort);
+      setPortal();
+      http.createServer(serveMain).listen(config.mainPort);
       http.createServer(serveStorage).listen(config.storagePort);
       console.log('See http://' + config.host + ':' + config.portalPort + '/'
-          + ' or visit a http-hosted, remoteStorage.js-based app and connect with me@localhost:'+ config.portalPort + ' (special backdoor!)');
+          + ' or visit a http-hosted, remoteStorage.js-based app and connect with me@localhost:'+ config.mainPort + ' (special backdoor!)');
     }
   });
 }

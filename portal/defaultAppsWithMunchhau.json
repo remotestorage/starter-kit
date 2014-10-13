@@ -1,0 +1,48 @@
+{
+  "Laverna": {
+    "href": "https://laverna.cc/"
+  },
+  "browser": {
+    "href": "https://remotestorage-browser.5apps.com/"
+  },
+  "byoDB": {
+    "href": "http://diafygi.github.io/byoDB/examples/diary/"
+  },
+  "dogfeed": {},
+  "dogtalk": {},
+  "drinks": {
+    "href": "https://myfavoritedrinks.5apps.com/"
+  },
+  "dspace-client": {
+    "href": "https://dspace-nilclass.5apps.com/",
+    "img": "/img/dspace.png"
+  },
+  "gHost": {},
+  "grouptabs": {},
+  "litewrite": {
+    "href": "http://litewrite.net",
+    "img": "/img/litewrite.png",
+    "name": "litewrite"
+  },
+  "mcnotes": {},
+  "music": {
+    "href": "https://music-michiel.5apps.com/"
+  },
+  "strut": {
+    "href": "http://tantaman.github.com/Strut/"
+  },
+  "svg-edit": {
+    "href": "https://svg-edit.5apps.com/editor/svg-editor.html"
+  },
+  "time tracker": {
+    "href": "http://shybyte.github.io/unhosted-time-tracker/",
+    "img": "/img/time.png"
+  },
+  "todo": {
+    "href": "https://todomvc.5apps.com/labs/architecture-examples/remotestorage/"
+  },
+  "vidmarks": {},
+  "Munchhau": {
+    "manifest": "munchhau.manifest"
+  }
+}

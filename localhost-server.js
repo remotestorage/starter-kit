@@ -14,7 +14,7 @@ exports.createInstance = function(kv, config) {
   };
 
   var rootScope,
-    specVersion = 'draft-dejong-remotestorage-02',
+    specVersion = 'draft-dejong-remotestorage-04',
     remotestorageServer = new RemotestorageServer(specVersion, tokenStore, dataStore);
 
   if (specVersion === 'draft-dejong-remotestorage-00' || specVersion === 'draft-dejong-remotestorage-01') {
@@ -121,7 +121,15 @@ exports.createInstance = function(kv, config) {
       userName = userAddress.split('@')[0];
     }
     writeJson(res, {
-      links:[ remotestorageServer.getWebfingerLink('http', config.host, config.storagePort, userName, 'http://'+config.host+':'+config.portalPort+'/auth/'+userName) ]
+      links:[
+        remotestorageServer.getWebfingerLink(
+            'http',
+            config.host,
+            config.storagePort,
+            userName,
+            'http://'+config.host+':'+config.portalPort+'/auth/'+userName,
+            config.host)
+      ]
     });
   }
   function oauth(req, res) {
