@@ -4,6 +4,7 @@ var fs = require('fs'),
 
 var config = {
   defaultUserName: 'me',
+  webAuthoringPath: '/storage/me/public/www/',
   host: 'localhost',
   storagePort: 8000,
   portalPort: 8001,
@@ -32,8 +33,8 @@ function loadFiles(dir, port) {
       loadFiles(filePath, port);
     } else {
      console.log('loading initial file for port ' + port.toString() + ' from ' + filePath);
-      server.backdoorSet('me',
-          '/storage/me/public/apps/' + port.toString() + filePath,
+      server.backdoorSet(config.defaultUserName,
+          config.webAuthoringPath + port.toString() + filePath,
           contentTypeFromFilename(fileName),
           fs.readFileSync(filePath),
           function(err, revision) {
@@ -46,7 +47,7 @@ function loadFiles(dir, port) {
 function websiteServer(filePath, port) {
   loadFiles(filePath, port);
   return function (req, res) {
-    req.url = '/storage/me/public/apps/' + port.toString() + req.url;
+    req.url = config.webAuthoringPath + port.toString() + req.url;
     if (req.url.substr(-1) === '/') {
       req.url += 'index.html';
     }
