@@ -4,7 +4,8 @@ var fs = require('fs'),
 
 var config = {
   defaultUserName: 'me',
-  webAuthoringPath: '/storage/me/public/www/',
+  storageRoot: '/storage/',
+  webAuthoringPath: '/public/www/',
   host: 'localhost',
   storagePort: 8000,
   portalPort: 8001,
@@ -16,29 +17,34 @@ var server;
 
 function contentTypeFromFilename(fileName) {
   if (fileName.substr(-5) === '.html') {
-    return 'text/html';
+    return new Buffer('text/html', 'utf-8');
   } else if (fileName.substr(-3) === '.js') {
-    return 'application/javascript';
+    return new Buffer('application/javascript', 'utf-8');
   } else {
-    return 'text/plain';
+    return new Buffer('text/plain', 'utf-8');
   }
 }
 
-function loadFiles(dir, port) {
-  var list = fs.readdirSync(dir)
+function loadFiles(dir, port, basedir) {
+  var list = fs.readdirSync(dir);
+  if (!basedir) {
+    basedir = dir;
+  }
   list.forEach(function(fileName) {
     var filePath = dir + '/' + fileName;
+    var pathOnStorage;
     var stat = fs.statSync(filePath);
     if (stat && stat.isDirectory()) {
-      loadFiles(filePath, port);
+      loadFiles(filePath, port, basedir);
     } else {
+     pathOnStorage = config.webAuthoringPath + port.toString() + filePath.substring(basedir.length),
      console.log('loading initial file for port ' + port.toString() + ' from ' + filePath);
       server.backdoorSet(config.defaultUserName,
-          config.webAuthoringPath + port.toString() + filePath,
-          contentTypeFromFilename(fileName),
+          pathOnStorage,
           fs.readFileSync(filePath),
+          contentTypeFromFilename(fileName),
           function(err, revision) {
-            console.log('created', filePath, err, revision);
+            console.log('created', filePath, pathOnStorage, err, revision);
           });
     }
   });
@@ -47,7 +53,7 @@ function loadFiles(dir, port) {
 function websiteServer(filePath, port) {
   loadFiles(filePath, port);
   return function (req, res) {
-    req.url = config.webAuthoringPath + port.toString() + req.url;
+    req.url = config.storageRoot + config.defaultUserName + config.webAuthoringPath + port.toString() + req.url;
     if (req.url.substr(-1) === '/') {
       req.url += 'index.html';
     }
