@@ -122,7 +122,7 @@ function launch() {
       http.createServer(serveMain).listen(config.mainPort);
       http.createServer(serveStorage).listen(config.storagePort);
       console.log('See http://' + config.host + ':' + config.portalPort + '/'
-          + ' or visit a http-hosted, remoteStorage.js-based app and connect with me@localhost:'+ config.mainPort + ' (special backdoor!)');
+          + ' or visit a http-hosted, remoteStorage.js-based app and connect with me@localhost:'+ config.mainPort + ' (special backdoor, does not work from https-hosted apps!)');
     }
   });
 }
