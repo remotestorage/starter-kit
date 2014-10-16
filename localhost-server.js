@@ -102,7 +102,7 @@ exports.createInstance = function(kv, config) {
       outstanding++;
       (function(i) {
         createToken(config.defaultUserName, [rootScope+':rw'], function(token) {
-          res.write('<li><a href="'+i+'#remotestorage=me@'+config.host+':'+config.portalPort
+          res.write('<li><a href="'+i+'#remotestorage=me@'+config.host+':'+config.mainPort
                     +'&access_token='+token+'">'+config.apps[i]+'</a></li>');
           outstanding--;
           if(outstanding==0) {
@@ -127,7 +127,7 @@ exports.createInstance = function(kv, config) {
             config.host,
             config.storagePort,
             userName,
-            'http://'+config.host+':'+config.portalPort+'/auth/'+userName,
+            'http://'+config.host+':'+config.mainPort+'/auth/'+userName,
             config.host)
       ]
     });
