@@ -28,53 +28,82 @@ function contentTypeFromFilename(fileName) {
   }
 }
 
-function loadFiles(dir, port, basedir) {
-  var list = fs.readdirSync(dir);
+function loadFiles(dir, port, basedir, callback) {
+  var list = fs.readdirSync(dir),
+    assets = [], numToDo = list.length;
   if (!basedir) {
     basedir = dir;
+  }
+  function doneOne() {
+    numToDo--;
+    if (numToDo ===0) {
+      callback(assets);
+    }
   }
   list.forEach(function(fileName) {
     var filePath = dir + '/' + fileName;
     var pathOnStorage;
     var stat = fs.statSync(filePath);
     if (stat && stat.isDirectory()) {
-      loadFiles(filePath, port, basedir);
+      loadFiles(filePath, port, basedir, function(subAssets) {
+        for(var i =0; i<subAssets.length; i++) {
+          assets.push(filePath + '/' + subAssets[i]);
+        }
+        doneOne();
+      });
     } else {
      pathOnStorage = config.webAuthoringPath + port.toString() + filePath.substring(basedir.length),
-     //console.log('loading initial file for port ' + port.toString() + ' from ' + filePath);
       server.backdoorSet(config.defaultUserName,
           pathOnStorage,
           fs.readFileSync(filePath),
           contentTypeFromFilename(fileName),
           function(err, revision) {
-            //console.log('created', filePath, pathOnStorage, err, revision);
+            assets.push(filePath);
+            doneOne();
           });
     }
   });
 }
 
-function websiteServer(filePath, port) {
-  loadFiles(filePath, port);
+function websiteServer(filePath, port, callback) {
+  loadFiles(filePath, port, undefined, callback);
+
   return function (req, res) {
     req.url = config.storageRoot + config.defaultUserName + config.webAuthoringPath + port.toString() + req.url;
     if (req.url.substr(-1) === '/') {
       req.url += 'index.html';
     }
-    console.log('websiteServer', filePath, port, 'redirected request to ',req.url);
     return serveStorage(req, res);
   };
 }
 
 function setApps(listing) {
   for(var i=0; i<listing.length; i++) {
-    var listener = websiteServer('./apps/'+listing[i], config.firstAppPort+i);
+    var listener = websiteServer('./apps/'+listing[i], config.firstAppPort+i, function(bindName, bindPort) {
+      return function(assets) {
+        server.backdoorSet(config.defaultUserName,
+          '/apps/' + bindName + '.manifest',
+          new Buffer(JSON.stringify({
+            name: bindName,
+            href: 'http://localhost:' + bindPort + '/',
+            img: '/img/' + bindName + '.png',
+            assets: assets
+          }), 'utf-8'),
+          new Buffer('application/json', 'utf-8'),
+          function(err, revision) {
+            console.log('manifest stored', '/apps/' + bindName + '.manifest');
+          }
+        );
+      };
+    }(listing[i], config.firstAppPort+i));
     http.createServer(listener).listen(config.firstAppPort+i);
     config.apps['http://'+config.host+':'+(config.firstAppPort+i)+'/'] = listing[i];
   }
 }
 
 function setPortal() {
-  var listener = websiteServer('./portal', config.portalPort);
+  var listener = websiteServer('./portal', config.portalPort, function(portalAssets) {
+  });
   http.createServer(listener).listen(config.portalPort);
 }
 
