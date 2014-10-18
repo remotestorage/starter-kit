@@ -142,10 +142,15 @@ exports.createInstance = function(kv, config) {
     userName;
     var userName = urlObj.pathname.substring('/auth/'.length);
     createToken(userName, scopes, function(token) {
-      writeHtml(res, '<a href="'+toHtml(redirectUri)
-          + '#access_token='+toHtml(token)
-          + (state === undefined ? '' : '&state='+toHtml(state))
-          + '">Allow</a>');
+      var linkURL = toHtml(redirectUri)
+              + '#access_token='+toHtml(token)
+              + (state === undefined ? '' : '&state='+toHtml(state));
+      if (Array.isArray(scopes) && scopes.length === 1 && scopes[0] === 'apps:rw'
+          && redirectUri === 'http://localhost:8002/') {
+        writeHtml(res, '<script>location = "'+linkURL+'";</script>');
+      } else {
+        writeHtml(res, '<a href="' + linkURL + '">Allow</a>');
+      }
     });
   }
 

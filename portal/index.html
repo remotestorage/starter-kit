@@ -126,7 +126,9 @@ To sync your installed apps across multiple devices, <strong>connect your remote
       remoteStorage.access.claim('apps', 'rw');
       remoteStorage.displayWidget();
       remoteStorage.on('not-connected', function() {
-        remoteStorage.setUserAddress('me@localhost:8001');
+        var userAddress = 'me@localhost:8001';
+        remoteStorage.widget.view.setUserAddress(userAddress);
+        remoteStorage.connect(userAddress);
       });
       remoteStorage.on('ready', function() {
         remoteStorage.local.on('local-events-done', function() {
