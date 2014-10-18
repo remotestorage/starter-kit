@@ -41,13 +41,13 @@ function loadFiles(dir, port, basedir) {
       loadFiles(filePath, port, basedir);
     } else {
      pathOnStorage = config.webAuthoringPath + port.toString() + filePath.substring(basedir.length),
-     console.log('loading initial file for port ' + port.toString() + ' from ' + filePath);
+     //console.log('loading initial file for port ' + port.toString() + ' from ' + filePath);
       server.backdoorSet(config.defaultUserName,
           pathOnStorage,
           fs.readFileSync(filePath),
           contentTypeFromFilename(fileName),
           function(err, revision) {
-            console.log('created', filePath, pathOnStorage, err, revision);
+            //console.log('created', filePath, pathOnStorage, err, revision);
           });
     }
   });
@@ -74,7 +74,7 @@ function setApps(listing) {
 }
 
 function setPortal() {
-  var listener = websiteServer('./portal/', config.portalPort);
+  var listener = websiteServer('./portal', config.portalPort);
   http.createServer(listener).listen(config.portalPort);
 }
 
