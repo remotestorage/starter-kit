@@ -1,2 +1,3 @@
 #TODO:
-* the loop that loads in the apps should also create manifests, which then become the prefilled apps list
+* add icons to the four default apps
+* fix portal to show apps it has loaded
