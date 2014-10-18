@@ -1,0 +1,3 @@
+#TODO:
+* if the portal sees sees no remoteStorage.userAddress is set, it can default to me@localhost:8001, and oauth dialog can auto-approve that
+* the loop that loads in the apps should also create manifests, which then become the prefilled apps list
