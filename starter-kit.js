@@ -95,7 +95,7 @@ function setApps(listing) {
     var listener = websiteServer('./apps/'+listing[i], config.firstAppPort+i, function(bindName, bindPort) {
       return function(assets) {
         server.backdoorSet(config.defaultUserName,
-          '/apps/' + bindName + '.manifest',
+          '/apps/' + bindName,
           new Buffer(JSON.stringify({
             name: bindName,
             href: 'http://localhost:' + bindPort + '/',

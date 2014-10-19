@@ -246,8 +246,11 @@ RemoteStorage.defineModule('apps', function(privClient, pubClient) {
         getAsset(name, apps[name].href, apps[name].assets[i], authoringPort).then(function() {
           numDone++;
           if (numDone === apps[name].assets.length) {
+            apps[name].href = remoteStorage.www.getWebUrl(authoringPort, '');
             apps[name].cloned = true;
-            pending.resolve();
+            privClient.storeObject('app', name, apps[name]).then(function() {
+              pending.resolve();
+            });
           }
         }, function() {
           pending.reject('error retrieving one of the assets');

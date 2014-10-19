@@ -19,7 +19,7 @@ RemoteStorage.defineModule('www', function(privClient, pubClient) {
         pubClient.on('change', function(evt) {
           var ports = evt.relativePath.split('/');
           console.log('change in app on port', ports[0]);
-          authoringPorts[port] = true;
+          authoringPorts[ports[0]] = true;
         });
       },
       authoringSupported: function() {
@@ -28,10 +28,17 @@ RemoteStorage.defineModule('www', function(privClient, pubClient) {
           && (typeof remoteStorage.remote.properties['http://remotestorage.io/spec/web-authoring'] === 'string'));
       },
       storeFile: function(authoringPort, contentType, path, body) {
-        pubClient.storeFile(contentType, authoringPort+'/'+path, body);
+        return pubClient.storeFile(contentType, authoringPort+'/'+path, body);
       },
       getWebUrl: function(authoringPort, path) {
-        return 'https://'
+        var protocol;
+        //on localhost, the protocol is http instead of https:
+        if (remoteStorage.remote.properties['http://remotestorage.io/spec/web-authoring'] === 'localhost') {
+          protocol = 'http';
+        } else {
+          protocol = 'https';
+        }
+        return protocol + '://'
           + remoteStorage.remote.properties['http://remotestorage.io/spec/web-authoring']
           + ':' + authoringPort + '/' + path;
       },
