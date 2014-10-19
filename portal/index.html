@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="description" content="example unhosted web apps" />
+    <title>unhosted web apps: example apps</title>
+    <link rel="stylesheet" href="store.css" />
+  </head>
+
+  <body>
+    <article>
+      <div style="text-align:center">
+        <a href="https://unhosted.org/">
+          <img src="island-color.png">
+        </a>
+       <p>
+         App channel:
+         <input id="channel-url-input" style="width:25em"
+             onkeydown="if(event.keyCode === 13){fetchChannel();}"/>
+         <input id="channel-url-button" type="submit" value="update" onclick="fetchChannel();"/>
+        </p>
+      </div>
+      <p style="margin-bottom:3em">
+        <input type="button" id="install-button" value="INSTALL NEW UNHOSTED WEB APPS" onclick="toggleShowInstall();" />
+
+      <p class="top-paragraph">
+To sync your installed apps across multiple devices, <strong>connect your remote storage</strong> at the top right of this page.
+      </p>
+      <ul class="icons install hidden" id="apps-install">
+        <p id="no-apps-placeholder">(no more apps available to install)</p>
+      </ul>
+      <ul class="icons" id="apps-list">
+        <p id="no-apps-placeholder">(loading...)</p>
+      </ul>
+    </article>      
+  </body>
+  <script src="remotestorage.js"></script>
+  <script src="apps.js"></script>
+  <script src="www.js"></script>
+  <script>
+    function createLi(key, obj, userAddress) {
+      var launchParam = '', cloneButton = '', uninstallButton = '';
+      if (userAddress) {
+        launchParam = '#remotestorage='+encodeURIComponent(userAddress);
+      }
+      if (obj.assets && remoteStorage.www.authoringSupported() && !obj.cloned) {
+        cloneButton = ' (<span class="clone-button" onclick="cloneApp(\''+obj.name+'\');"><strong>&plus;</strong></span>)';
+      }
+      uninstallButton = ' (<span class="uninstall-button" onclick="uninstallApp(\''+obj.name+'\');"><strong>&times;</strong></span>)';
+      return '<li>'
+        + (obj.img === 'none' ? '' :
+          '<a href="'
+          + obj.href + launchParam + '"><img src="'
+          + obj.img + '" /></a>'
+        )
+        + '<p><a href="'
+        + obj.href + launchParam + '">'
+        + obj.name + '</a>'
+        + cloneButton + uninstallButton + '</p></li>';
+    }
+    function createInstallLi(key, obj, userAddress) {
+      return '<li onclick="installApp(\'' + obj.name + '\');">'
+        + (obj.img === 'none' ? '' :
+          '<img src="'
+          + obj.img + '" />'
+        )
+        + '<p>'
+        + obj.name
+        + '</p></li>';
+    }
+    function refreshList(apps, userAddress) {
+      var innerHTML = '';
+      for(var entry in apps) {
+        innerHTML += createLi(entry, apps[entry], userAddress);
+      }
+      document.getElementById('apps-list').innerHTML = innerHTML;
+    }
+    function refreshInstallList(apps, userAddress) {
+      var innerHTML = '';
+      for(var entry in apps) {
+        innerHTML += createInstallLi(entry, apps[entry], userAddress);
+      }
+      document.getElementById('apps-install').innerHTML = innerHTML;
+    }
+    function toggleShowInstall() {
+      ['apps-install', 'apps-list'].forEach(function(eltName) {
+        var classList = document.getElementById(eltName).classList
+        classList.toggle('hidden');
+        if (eltName === 'apps-install') {
+          if (classList.contains('hidden')) {
+            document.getElementById('install-button').value = 'INSTALL NEW APPS';
+          } else {
+            document.getElementById('install-button').value = 'DONE';
+          }
+        }
+      });
+    }
+    function hideInstall() {
+      document.getElementById('apps-install').
+      document.getElementById('apps-install').classList.add('hidden');
+    }
+    function installApp(name) {
+      remoteStorage.apps.installApp(name).then(function() {
+        //automatically clone all apps that are installed:
+        remoteStorage.apps.cloneApp(name);
+      });
+    }
+    function uninstallApp(name) {
+      remoteStorage.apps.uninstallApp(name);
+    }
+    function cloneApp(name) {
+      remoteStorage.apps.cloneApp(name);
+    }
+    function fetchChannel() {
+      try {
+        remoteStorage.apps.setAppChannel(document.getElementById('channel-url-input').value).then(function(obj) {
+          document.getElementById('channel-url-button').value = 'update';
+        }, function() {
+          document.getElementById('channel-url-button').value = '(failed)';
+        });
+      } catch(e) {
+        document.getElementById('channel-url-button').value = '(failed)';
+      }
+      document.getElementById('channel-url-button').value = '(updating)';
+    }
+    function init() {
+      RemoteStorage.config.logging = false;
+      remoteStorage.access.claim('apps', 'rw');
+      remoteStorage.access.claim('www', 'rw');
+      remoteStorage.displayWidget();
+      remoteStorage.on('not-connected', function() {
+        var userAddress = 'me@localhost:8001';
+        remoteStorage.widget.view.setUserAddress(userAddress);
+        remoteStorage.connect(userAddress);
+      });
+      remoteStorage.on('connected', function() {
+        remoteStorage.www.init();
+      });
+      remoteStorage.on('ready', function() {
+        remoteStorage.local.on('local-events-done', function() {
+          if (document.getElementById('no-apps-placeholder')) {
+            document.getElementById('no-apps-placeholder').innerHTML = '(no apps yet)';
+          }
+        });
+      });
+      remoteStorage.apps.onChannelChange(function(url) {
+        document.getElementById('channel-url-input').value = url;
+        fetchChannel();
+      });
+      remoteStorage.apps.onAppsChange(function(apps, appChannelUrl) {
+        refreshList(apps, remoteStorage.remote.userAddress);
+        remoteStorage.apps.getAvailableApps(true).then(refreshInstallList);
+      });
+    }
+    //...
+    init();
+    function d(p) {
+      p.then(function(a) {
+        console.log('success', a);
+      }, function(a) {
+        console.log('failure', a);
+      });
+    }
+  </script>
+</html>

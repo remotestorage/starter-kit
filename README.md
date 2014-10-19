@@ -1,9 +1,6 @@
 remoteStorage Starter Kit
 =========================
 
-(TIP: sit back and watch the [screencast](//www.youtube.com/embed/eGNJRyb5iJs) first)
-----------------------------------------------------------
-
 This starter-kit is the quickest way to get started with remoteStorage app
 development. It gives you a local remoteStorage server and a Hello World app
 as your starting point.
@@ -57,3 +54,5 @@ To launch all three, you only need to type one command:
     it to the launch screen on `http://localhost:8001/`
 * Post your reactions and questions on 
     http://community.remotestorage.io/category/getting-started
+* TIP: if you had trouble installing, this [screencast](//www.youtube.com/embed/eGNJRyb5iJs) may help.
+

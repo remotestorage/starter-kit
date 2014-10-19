@@ -14,7 +14,7 @@ exports.createInstance = function(kv, config) {
   };
 
   var rootScope,
-    specVersion = 'draft-dejong-remotestorage-02',
+    specVersion = 'draft-dejong-remotestorage-04',
     remotestorageServer = new RemotestorageServer(specVersion, tokenStore, dataStore);
 
   if (specVersion === 'draft-dejong-remotestorage-00' || specVersion === 'draft-dejong-remotestorage-01') {
@@ -102,7 +102,7 @@ exports.createInstance = function(kv, config) {
       outstanding++;
       (function(i) {
         createToken(config.defaultUserName, [rootScope+':rw'], function(token) {
-          res.write('<li><a href="'+i+'#remotestorage=me@'+config.host+':'+config.portalPort
+          res.write('<li><a href="'+i+'#remotestorage=me@'+config.host+':'+config.mainPort
                     +'&access_token='+token+'">'+config.apps[i]+'</a></li>');
           outstanding--;
           if(outstanding==0) {
@@ -121,7 +121,15 @@ exports.createInstance = function(kv, config) {
       userName = userAddress.split('@')[0];
     }
     writeJson(res, {
-      links:[ remotestorageServer.getWebfingerLink('http', config.host, config.storagePort, userName, 'http://'+config.host+':'+config.portalPort+'/auth/'+userName) ]
+      links:[
+        remotestorageServer.getWebfingerLink(
+            'http',
+            config.host,
+            config.storagePort,
+            userName,
+            'http://'+config.host+':'+config.mainPort+'/auth/'+userName,
+            config.host)
+      ]
     });
   }
   function oauth(req, res) {
@@ -134,10 +142,18 @@ exports.createInstance = function(kv, config) {
     userName;
     var userName = urlObj.pathname.substring('/auth/'.length);
     createToken(userName, scopes, function(token) {
-      writeHtml(res, '<a href="'+toHtml(redirectUri)
-          + '#access_token='+toHtml(token)
-          + (state === undefined ? '' : '&state='+toHtml(state))
-          + '">Allow</a>');
+      var linkURL = toHtml(redirectUri)
+              + '#access_token='+toHtml(token)
+              + (state === undefined ? '' : '&state='+toHtml(state));
+      if (Array.isArray(scopes)
+          && scopes.length === 2
+          && scopes[0] === 'apps:rw'
+          && scopes[1] === 'www:rw'
+          && redirectUri === 'http://localhost:8002/') {
+        writeHtml(res, '<script>location = "'+linkURL+'";</script>');
+      } else {
+        writeHtml(res, '<a href="' + linkURL + '">Allow</a>');
+      }
     });
   }
 
@@ -147,6 +163,9 @@ exports.createInstance = function(kv, config) {
     oauth: oauth,
     storage: function(req, res) {
       return remotestorageServer.storage(req, res);
+    },
+    backdoorSet: function(username, path, body, contentType, cb) {
+      return remotestorageServer.backdoorSet(username, path, body, contentType, cb);
     }
   };
 };

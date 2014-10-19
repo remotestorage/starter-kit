@@ -1,0 +1,37 @@
+body { font:15px sans-serif; line-height:1.4em; max-width:1000px; color:#222 }
+h1 { font:57px sans-serif; margin: 0px 0px 10px 0px }
+h2 { font:25px sans-serif }
+h3 { font:20px sans-serif }
+h4 { font:18px sans-serif sourced }
+
+header { margin-top: 50px; margin-bottom:100px; line-height:1.0em; color:#666 }
+
+#install-button { width: 70%; margin-left: 15%; margin-top: 2em; height: 5em; background-color:#0EF; border-radius: 1em }
+
+.clone-button { color: green }
+.uninstall-button { color: red }
+
+article { background-color: #EEE; border-radius:1em; float:right; width: 40em; max-width:600px; margin:10px 10px 40px 10px}
+
+article h2 { margin-top: 5em }
+article header h2 { margin-top: 0 }
+
+article .icons li { display: inline; float: left; text-align: center; color: #666; margin: 0px 0px 40px 0px }
+article .icons li a { margin: 16px; color: #666 }
+article .icons li p a { margin: 0px }
+article .icons li a img { color: #E0E0E0; margin: 1px auto; border-style: solid; border-radius: 8px; box-shadow: 0 0 1em #D0D0D0 }
+
+article .install li p { background: grey }
+article .hidden { display: none  }
+
+nav { float:right; width:250px; margin:30px 50px 50px 50px; line-height:0.6em; background-color:#EEE; color:#002; border-radius:5px }
+nav p { margin-left:1em }
+nav a:hover,active { color:#006 }
+nav div { text-align:left; margin:10px }
+nav div img { border-radius:5px }
+.logo { float:right; width:350px; text-align:center }
+nav .logo { float:right; width:250px; text-align:center }
+.logo img { margin:0 auto }
+nav ul { line-height: 1.2em }
+
+footer { clear:right; text-align:center; background-color:#EEE }
