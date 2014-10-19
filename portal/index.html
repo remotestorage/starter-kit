@@ -14,24 +14,21 @@
         <a href="https://unhosted.org/">
           <img src="island-color.png">
         </a>
-       <p>
-         App channel:
-         <input id="channel-url-input" style="width:25em"
-             onkeydown="if(event.keyCode === 13){fetchChannel();}"/>
-         <input id="channel-url-button" type="submit" value="update" onclick="fetchChannel();"/>
+        <ul class="icons" id="apps-list">
+          <p id="no-apps-placeholder">(loading...)</p>
+        </ul>
+        <p style="clear:left">
+          App channel:
+          <input id="channel-url-input" style="width:25em"
+              onkeydown="if(event.keyCode === 13){fetchChannel();}"/>
+          <input id="channel-url-button" type="submit" value="update" onclick="fetchChannel();"/>
         </p>
       </div>
       <p style="margin-bottom:3em">
         <input type="button" id="install-button" value="INSTALL NEW UNHOSTED WEB APPS" onclick="toggleShowInstall();" />
 
-      <p class="top-paragraph">
-To sync your installed apps across multiple devices, <strong>connect your remote storage</strong> at the top right of this page.
-      </p>
       <ul class="icons install hidden" id="apps-install">
         <p id="no-apps-placeholder">(no more apps available to install)</p>
-      </ul>
-      <ul class="icons" id="apps-list">
-        <p id="no-apps-placeholder">(loading...)</p>
       </ul>
     </article>      
   </body>
