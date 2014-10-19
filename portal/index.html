@@ -101,7 +101,10 @@ To sync your installed apps across multiple devices, <strong>connect your remote
       document.getElementById('apps-install').classList.add('hidden');
     }
     function installApp(name) {
-      remoteStorage.apps.installApp(name);
+      remoteStorage.apps.installApp(name).then(function() {
+        //automatically clone all apps that are installed:
+        remoteStorage.apps.cloneApp(name);
+      });
     }
     function uninstallApp(name) {
       remoteStorage.apps.uninstallApp(name);
@@ -143,7 +146,7 @@ To sync your installed apps across multiple devices, <strong>connect your remote
       });
       remoteStorage.apps.onAppsChange(function(apps, appChannelUrl) {
         refreshList(apps, remoteStorage.remote.userAddress);
-        remoteStorage.apps.getAvailableApps().then(refreshInstallList);
+        remoteStorage.apps.getAvailableApps(true).then(refreshInstallList);
       });
     }
     //...

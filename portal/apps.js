@@ -282,16 +282,17 @@ RemoteStorage.defineModule('apps', function(privClient, pubClient) {
    * which are available to install.
    *
    * Parameters:
-   *   (none)
+   *   cloneableOnly - boolean; if set to true, only returns apps whose assets
+   *                       you can clone to your own storage.
    *
    * Returns: A dictionary from string app names to objects that follow the
    *              apps/app schema defined above.
    */
-  function getAvailableApps() {
+  function getAvailableApps(cloneableOnly) {
     return fetchDefaultApps().then(function() {
       var i, availableApps = {};
       for (i in defaultApps) {
-        if (!apps[i]) {
+        if (!apps[i] && (Array.isArray(defaultApps[i].assets) || !cloneableOnly)) {
           availableApps[i] = defaultApps[i];
         }
       }
