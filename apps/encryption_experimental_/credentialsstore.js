@@ -63,9 +63,7 @@ CredentialsStore.prototype.setConfig = function(pwd, config) {
   config['@context'] = 'http://remotestorage.io/spec/modules/' + this.moduleName + '/config';
   var validationResult = this.privClient.validate(config);
   if (!validationResult.valid) {
-    var promise = promising();
-    promise.reject('Please follow the config schema - ' + JSON.stringify(validationResult));
-    return promise;
+    return Promise.reject('Please follow the config schema - ' + JSON.stringify(validationResult));
   }
   config = JSON.stringify(config);
   if(typeof(pwd) === 'string') {

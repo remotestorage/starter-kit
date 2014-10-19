@@ -40,7 +40,7 @@ RemoteStorage.defineModule('apps', function(privClient, pubClient) {
   }
 
   function fillInBlanks(key, obj) {
-    var pending.promise;
+    var pending;
     if (obj.manifest) {
       return fetchManifest(obj.manifest);
     }
