@@ -78,6 +78,14 @@ function websiteServer(filePath, port, callback) {
 }
 
 function setApps(listing) {
+  server.backdoorSet(config.defaultUserName,
+    '/apps/channel-url',
+    new Buffer('https://apps.unhosted.org/defaultApps.json', 'utf-8'),
+    new Buffer('application/json', 'utf-8'),
+    function(err, revision) {
+      console.log('channel url stored stored', '/apps/channel-url');
+    }
+  );
   for(var i=0; i<listing.length; i++) {
     var listener = websiteServer('./apps/'+listing[i], config.firstAppPort+i, function(bindName, bindPort) {
       return function(assets) {
@@ -86,7 +94,7 @@ function setApps(listing) {
           new Buffer(JSON.stringify({
             name: bindName,
             href: 'http://localhost:' + bindPort + '/',
-            img: '/img/' + bindName + '.png',
+            img: 'http://localhost:' + bindPort + '/icon_x128.png',
             assets: assets
           }), 'utf-8'),
           new Buffer('application/json', 'utf-8'),

@@ -185,13 +185,15 @@ RemoteStorage.defineModule('apps', function(privClient, pubClient) {
     RemoteStorage.config.changeEvents.window = true;
     privClient.cache('', 'ALL');
     privClient.on('change', function(evt) {
-      if (evt.relativePath === 'channel-url') {
-        channelChangeHandler(evt.newValue);
-      } else {
-        if (evt.newValue) {
-          apps[evt.relativePath] = evt.newValue;
+      if (evt.newValue !== evt.oldValue) {//this is a workaround for https://github.com/remotestorage/remotestorage.js/issues/764
+        if (evt.relativePath === 'channel-url') {
+          channelChangeHandler(evt.newValue);
         } else {
-          delete apps[evt.relativePath];
+          if (evt.newValue) {
+            apps[evt.relativePath] = evt.newValue;
+          } else {
+            delete apps[evt.relativePath];
+          }
         }
       }
       appsChangeHandler(apps);

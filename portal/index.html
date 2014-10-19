@@ -44,7 +44,6 @@ To sync your installed apps across multiple devices, <strong>connect your remote
       if (userAddress) {
         launchParam = '#remotestorage='+encodeURIComponent(userAddress);
       }
-      console.log(JSON.stringify(obj));
       if (obj.assets && remoteStorage.www.authoringSupported()) {
         cloneButton = ' (<span class="clone-button" onclick="cloneApp(\''+obj.name+'\');"><strong>&plus;</strong></span>)';
       }
