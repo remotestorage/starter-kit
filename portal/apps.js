@@ -18,7 +18,7 @@ RemoteStorage.defineModule('apps', function(privClient, pubClient) {
   };
 
   function fetchManifest(manifestUrl) {
-    var promise = promising(),
+    var pending = Promise.defer(),
     xhr = new XMLHttpRequest();
     xhr.open('GET', manifestUrl, true);
     //xhr.responseType = 'json';
@@ -27,29 +27,29 @@ RemoteStorage.defineModule('apps', function(privClient, pubClient) {
       try {
         obj = JSON.parse(xhr.response);
       } catch (e) {
-        promise.reject('could not parse JSON document from ' + manifestUrl);
+        pending.reject('could not parse JSON document from ' + manifestUrl);
         return;
       }
-      promise.fulfill(obj);
+      pending.resolve(obj);
     };
     xhr.onerror = function() {
-      promise.reject('could not fetch ' + manifestUrl);
+      pending.reject('could not fetch ' + manifestUrl);
     };
     xhr.send();
-    return promise;
+    return pending.promise;
   }
 
   function fillInBlanks(key, obj) {
-    var promise;
+    var pending.promise;
     if (obj.manifest) {
       return fetchManifest(obj.manifest);
     }
-    promise = promising();
+    pending = Promise.defer();
     obj.href = obj.href || 'https://'+key.toLowerCase()+'.5apps.com/';
     obj.img = obj.img || '/img/'+key.toLowerCase()+'.png';
     obj.name = obj.name || key;
-    promise.fulfill(obj);
-    return promise;
+    pending.resolve(obj);
+    return pending.promise;
   }
 
   function setAppChannel(channelUrl) {
@@ -61,26 +61,26 @@ RemoteStorage.defineModule('apps', function(privClient, pubClient) {
   function fetchDefaultApps() {
     var thisTime = time++;
     return privClient.getFile('channel-url').then(function(obj) {
-      var promise = promising();
+      var pending = Promise.defer();
       var channelUrl = obj.data;
       if (typeof channelUrl !== 'string') {
         channelUrl = 'https://apps.unhosted.org/defaultApps.json';
         setAppChannel(channelUrl);
       }
       if (currentChannel === channelUrl) {
-        promise.fulfill();
+        pending.resolve();
         return;
       }
       var xhr = new XMLHttpRequest();
       xhr.open('GET', channelUrl, true);
       xhr.responseType = 'json';
       xhr.onerror = function() {
-        promise.reject('error fetching app list');
+        pending.reject('error fetching app list');
       };
       xhr.onload = function() {
         var numRunning = 0;
         if (xhr.response === null) {
-          promise.reject('not json');
+          pending.reject('not json');
           return;
         }
         defaultApps = {};
@@ -91,23 +91,23 @@ RemoteStorage.defineModule('apps', function(privClient, pubClient) {
               defaultApps[bindI] = obj;
               numRunning--;
               if (numRunning === 0) {
-                promise.fulfill();
+                pending.resolve();
               }
             };
           })(i), function() {
             numRunning--;
             if (numRunning === 0) {
-              promise.fulfill();
+              pending.resolve();
             }
           });
         }
         currentChannel = channelUrl;
         if (numRunning === 0) {
-          promise.fulfill();
+          pending.resolve();
         }
       };
       xhr.send();
-      return promise;
+      return pending.promise;
     });
   }
 
@@ -218,43 +218,43 @@ RemoteStorage.defineModule('apps', function(privClient, pubClient) {
   }
 
   function getAsset(appName, assetBase, assetPath, authoringPort) {
-    var promise = promising();
+    var pending = Promise.defer();
     var xhr = new XMLHttpRequest();
     xhr.open('GET', assetBase+assetPath, true);
     xhr.responseType = 'arraybuffer';
     xhr.onload = function() {
       remoteStorage.www.storeFile(authoringPort, xhr.getResponseHeader('Content-Type'), assetPath, xhr.response).then(function() {
-        promise.fulfill();
+        pending.resolve();
       }, function() {
-        promise.reject();
+        pending.reject();
       });
     };
     xhr.onerror = function() {
-      promise.reject();
+      pending.reject();
     }
     xhr.send();
-    return promise;
+    return pending.promise;
   }
 
   function cloneApp(name) {
-    var promise = promising(), numDone = 0, i;
+    var pending = Promise.defer(), numDone = 0, i;
     if (Array.isArray(apps[name].assets) && apps[name].assets.length >= 1) {
       return remoteStorage.www.addAuthoringPort().then(function(authoringPort) {
         for (i=0; i<apps[name].assets.length; i++) {
           getAsset(name, apps[name].href, apps[name].assets[i], authoringPort).then(function() {
             numDone++;
             if (numDone === apps[name].assets.length) {
-              promise.fulfill();
+              pending.resolve();
             }
           }, function() {
-            promise.reject('error retrieving one of the assets');
+            pending.reject('error retrieving one of the assets');
           });
         }
       });
     } else {
-      promise.reject('could not determine assets of ' + name);
+      pending.reject('could not determine assets of ' + name);
     }
-    return promise;
+    return pending.promise;
   }
 
   /**
