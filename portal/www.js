@@ -8,7 +8,7 @@
 RemoteStorage.defineModule('www', function(privClient, pubClient) {
   var authoringPorts = [];
   return {
-    export: {
+    exports: {
       authoringSupported: function() {
         return (remoteStorage && remoteStorage.remote
           && (typeof remoteStorage.remote.properties === 'object')
