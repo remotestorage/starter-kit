@@ -145,7 +145,10 @@ exports.createInstance = function(kv, config) {
       var linkURL = toHtml(redirectUri)
               + '#access_token='+toHtml(token)
               + (state === undefined ? '' : '&state='+toHtml(state));
-      if (Array.isArray(scopes) && scopes.length === 1 && scopes[0] === 'apps:rw'
+      if (Array.isArray(scopes)
+          && scopes.length === 2
+          && scopes[0] === 'apps:rw'
+          && scopes[1] === 'www:rw'
           && redirectUri === 'http://localhost:8002/') {
         writeHtml(res, '<script>location = "'+linkURL+'";</script>');
       } else {

@@ -11,6 +11,8 @@ var config = {
   mainPort: 8001,
   portalPort: 8002,
   firstAppPort: 8003,
+  firstCloningPort: 1024,
+  lastCloningPort: 1034,
   apps: {}
 };
 
@@ -66,7 +68,10 @@ function loadFiles(dir, port, basedir, callback) {
 }
 
 function websiteServer(filePath, port, callback) {
-  loadFiles(filePath, port, undefined, callback);
+  if(filePath) {
+    loadFiles(filePath, port, undefined, callback);
+  }//else it will be empty until an app uses the www
+  //module to store a cloned app for that port.
 
   return function (req, res) {
     req.url = config.storageRoot + config.defaultUserName + config.webAuthoringPath + port.toString() + req.url;
@@ -107,6 +112,13 @@ function setApps(listing) {
     }(listing[i], config.firstAppPort+i));
     http.createServer(listener).listen(config.firstAppPort+i);
     config.apps['http://'+config.host+':'+(config.firstAppPort+i)+'/'] = listing[i];
+  }
+}
+
+function prepareCloningPorts() {
+  for(var i=config.firstCloningPort; i <= config.lastCloningPort; i++) {
+    var listener = websiteServer(undefined, i, function() {});
+    http.createServer(listener).listen(i);
   }
 }
 
@@ -157,6 +169,7 @@ function launch() {
       console.log('Loading files from the "apps/" folder into the "apps" and "www" modules:');
       server = require('./localhost-server').createInstance(kv, config);
       setApps(listing);
+      prepareCloningPorts();
       setPortal();
       http.createServer(serveMain).listen(config.mainPort);
       http.createServer(serveStorage).listen(config.storagePort);

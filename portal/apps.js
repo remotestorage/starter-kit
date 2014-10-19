@@ -241,19 +241,18 @@ RemoteStorage.defineModule('apps', function(privClient, pubClient) {
   function cloneApp(name) {
     var pending = Promise.defer(), numDone = 0, i;
     if (Array.isArray(apps[name].assets) && apps[name].assets.length >= 1) {
-      return remoteStorage.www.addAuthoringPort().then(function(authoringPort) {
-        for (i=0; i<apps[name].assets.length; i++) {
-          getAsset(name, apps[name].href, apps[name].assets[i], authoringPort).then(function() {
-            numDone++;
-            if (numDone === apps[name].assets.length) {
-              apps[name].cloned = true;
-              pending.resolve();
-            }
-          }, function() {
-            pending.reject('error retrieving one of the assets');
-          });
-        }
-      });
+      var authoringPort = remoteStorage.www.addAuthoringPort();
+      for (i=0; i<apps[name].assets.length; i++) {
+        getAsset(name, apps[name].href, apps[name].assets[i], authoringPort).then(function() {
+          numDone++;
+          if (numDone === apps[name].assets.length) {
+            apps[name].cloned = true;
+            pending.resolve();
+          }
+        }, function() {
+          pending.reject('error retrieving one of the assets');
+        });
+      }
     } else {
       pending.reject('could not determine assets of ' + name);
     }
