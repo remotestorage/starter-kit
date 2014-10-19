@@ -72,7 +72,8 @@ full control over your remoteStorage data, you can also edit apps after you clon
 action, type:
 
 ````js
-remoteStorage.www.storeFile('8003', 'text/html', 'index.html', '<html><h2>editing my app!</h2></html>');
+remoteStorage.www.storeFile('8003', 'text/html', 'index.html',
+    '<html><h2>editing my app!</h2></html>');
 ````
 
 in the console while on the portal page, and then visit http://localhost:8003/ to see the result. Web authoring
