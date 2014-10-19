@@ -1,6 +1,6 @@
 /**
  * Class: CredentialsStore
- * 
+ *
  * Given a moduleName and a privateClient, this class provides
  * a getConfig and a setConfig function which you can directly
  * use in your module. It also deals with optional client-side
@@ -13,7 +13,7 @@
  * Parameters:
  *   moduleName - String, the name of the module in which you are
  *                    using it, but without the "-credentials" suffix.
- *   privClient - The private BaseClient for your module, you get this from 
+ *   privClient - The private BaseClient for your module, you get this from
  *                    the callback call in remoteStorage.defineModule
  */
 function CredentialsStore(moduleName, privClient) {
@@ -21,7 +21,7 @@ function CredentialsStore(moduleName, privClient) {
   this.changeHandlers = [];
   this.moduleName = moduleName;
   this.privClient = privClient;
-  
+
   if (typeof(moduleName) !== 'string') {
     throw new Error('moduleName should be a string');
   }
@@ -29,9 +29,9 @@ function CredentialsStore(moduleName, privClient) {
     throw new Error('privClient should be a (private) base client');
   }
 
-   privClient.on('change', function(evt) {
-     if (evt.path === moduleName+'-config') {
-      for (var i=0; i < this.changeHandlers.length; i++) {
+  privClient.on('change', function(evt) {
+    if (evt.path === moduleName + '-config') {
+      for (var i = 0, len = this.changeHandlers.length; i < len; i++) {
         this.changeHandlers[i]();
       }
     }
@@ -57,22 +57,22 @@ CredentialsStore.prototype.setConfig = function(pwd, config) {
   if (typeof(config) !== 'object') {
     throw 'config should be an object';
   }
-  if (pwd && typeof sjcl === 'undefined') {
+  if (pwd && (typeof sjcl === 'undefined')) {
     throw 'please include sjcl.js (the Stanford JS Crypto Library) in your app';
   }
-  config['@context'] = 'http://remotestorage.io/spec/modules/'+this.moduleName+'/config';
+  config['@context'] = 'http://remotestorage.io/spec/modules/' + this.moduleName + '/config';
   var validationResult = this.privClient.validate(config);
   if (!validationResult.valid) {
-    var pending = Promise.defer();
-    pending.reject('Please follow the config schema - ' + JSON.stringify(validationResult));
-    return pending.promise;
+    var promise = promising();
+    promise.reject('Please follow the config schema - ' + JSON.stringify(validationResult));
+    return promise;
   }
   config = JSON.stringify(config);
   if(typeof(pwd) === 'string') {
-    config = this.algorithmPrefix+sjcl.encrypt(pwd, config);
+    config = this.algorithmPrefix + sjcl.encrypt(pwd, config);
   }
   return this.privClient.storeFile('application/json', this.moduleName+'-config', config);
-}
+};
 
 /**
  * Function: getConfig
@@ -90,38 +90,38 @@ CredentialsStore.prototype.setConfig = function(pwd, config) {
  *   '(moduleName)-config is not encrypted, or encrypted with a different algorithm'
  */
 CredentialsStore.prototype.getConfig = function(pwd) {
-  if (pwd && !sjcl) {
+  if (pwd && (typeof sjcl === 'undefined')) {
     throw 'please include sjcl.js (the Stanford JS Crypto Library) in your app';
   }
-  return this.privClient.getFile(this.moduleName+'-config', undefined).then(function(a) {
+  return this.privClient.getFile(this.moduleName + '-config', undefined).then(function(a) {
     if (typeof(a) === 'object' && typeof(a.data) === 'string') {
       if (typeof(pwd) === 'string') {
-        if (a.data.substring(0, this.algorithmPrefix.length) != this.algorithmPrefix) {
-          throw this.moduleName+'-config is not encrypted, or encrypted with a different algorithm';
+        if (a.data.substring(0, this.algorithmPrefix.length) !== this.algorithmPrefix) {
+          throw this.moduleName + '-config is not encrypted, or encrypted with a different algorithm';
         }
         try {
           a.data = JSON.parse(sjcl.decrypt(pwd, a.data.substring(this.algorithmPrefix.length)));
           delete a.data['@context'];
         } catch(e) {
-          throw 'could not decrypt '+this.moduleName+'-config with that password';
+          throw 'could not decrypt ' + this.moduleName + '-config with that password';
         }
       } else {
         if (a.data.substring(0, this.algorithmPrefix.length) === this.algorithmPrefix) {
-          throw this.moduleName+'-config is encrypted, please specify a password for decryption';
+          throw this.moduleName + '-config is encrypted, please specify a password for decryption';
         }
         try {
           a.data = JSON.parse(a.data);
           delete a.data['@context'];
         } catch(e) {
-          throw 'could not parse '+this.moduleName+'-config as unencrypted JSON';
+          throw 'could not parse ' + this.moduleName + '-config as unencrypted JSON';
         }
       }
     } else {
-      throw this.moduleName+'-config not found';
+      throw this.moduleName + '-config not found';
     }
     return a.data;
   }.bind(this));
-}
+};
 
 /**
  * Function: on
@@ -137,7 +137,7 @@ CredentialsStore.prototype.on = function(eventName, handler) {
   if (eventName === 'change') {
     this.changeHandlers.push(handler);
   }
-}
+};
 
 if (typeof(global) !== 'undefined') {
   global.CredentialsStore = CredentialsStore;
