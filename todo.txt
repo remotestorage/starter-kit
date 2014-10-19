@@ -1,2 +1,4 @@
 #TODO:
-* warn that most apps from the default channel will not work unless you import them to a http-hosted remoteStorage account
+* add some cloneable apps to the default channel
+* not show clone button on 4 pre-installed apps
+* fix uninstall button

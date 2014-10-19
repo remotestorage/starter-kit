@@ -153,13 +153,16 @@ function launch() {
     if(err) {
       console.log('make sure ./apps/ exists');
     } else {
+      console.log('Loading files from the "apps/" folder into the "apps" and "www" modules:');
       server = require('./localhost-server').createInstance(kv, config);
       setApps(listing);
       setPortal();
       http.createServer(serveMain).listen(config.mainPort);
       http.createServer(serveStorage).listen(config.storagePort);
-      console.log('See http://' + config.host + ':' + config.portalPort + '/'
-          + ' or visit a http-hosted, remoteStorage.js-based app and connect with me@localhost:'+ config.mainPort + ' (special backdoor, does not work from https-hosted apps!)');
+      console.log('\nSee http://' + config.host + ':' + config.portalPort + '/\n'
+          + '\nor visit a http-hosted, remoteStorage.js-based app and connect with me@localhost:'+ config.mainPort
+          + '\n(special backdoor, does not work from https-hosted apps!)\n'
+          + '\nNB: User data is only stored in memory, not saved to disk.');
     }
   });
 }
