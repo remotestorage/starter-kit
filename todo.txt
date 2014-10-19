@@ -1,4 +1,4 @@
 #TODO:
-* add some cloneable apps to the default channel
-* not show clone button on 4 pre-installed apps
+* fix remoteStorage.www.addAuthoringPort
+* update app URL to own authoring port when cloned
 * fix uninstall button

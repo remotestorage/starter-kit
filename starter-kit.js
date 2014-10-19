@@ -95,7 +95,8 @@ function setApps(listing) {
             name: bindName,
             href: 'http://localhost:' + bindPort + '/',
             img: 'http://localhost:' + bindPort + '/icon_x128.png',
-            assets: assets
+            assets: assets,
+            cloned: true
           }), 'utf-8'),
           new Buffer('application/json', 'utf-8'),
           function(err, revision) {

@@ -123,7 +123,7 @@ RemoteStorage.defineModule('apps', function(privClient, pubClient) {
    */
   function installApp(name) {
     apps[name] = defaultApps[name];
-    privClient.storeObject('app', name, apps[name]);
+    return privClient.storeObject('app', name, apps[name]);
   }
 
   /**
@@ -246,6 +246,7 @@ RemoteStorage.defineModule('apps', function(privClient, pubClient) {
           getAsset(name, apps[name].href, apps[name].assets[i], authoringPort).then(function() {
             numDone++;
             if (numDone === apps[name].assets.length) {
+              apps[name].cloned = true;
               pending.resolve();
             }
           }, function() {
