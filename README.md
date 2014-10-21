@@ -79,7 +79,7 @@ remoteStorage.www.storeFile('8003', 'text/html', 'index.html',
 in the console while on the portal page, and then visit http://localhost:8003/ to see the result. Web authoring
 is a new optional feature of the remoteStorage spec, which we have been talking about for several years now (also
 in the context of [Read-Write Web](http://www.w3.org/community/rww/), and whose development was funded by NLNet.
-The new spec describing it (version 04) will come out in December 2015, and it has been added as an *optional*
+The new spec describing it (version 04) will come out in December 2014, and it has been added as an *optional*
 feature, meaning not all server implementations and storage providers may support it. Whether or not the currently
-connected account supports web authoring can be detected through `remoteStorage.remote.properties`, which will be
+connected account supports web authoring can be detected through `remoteStorage.remote.properties`, which is
 supported by remotestorage.js 0.11 and up.
