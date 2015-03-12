@@ -1,0 +1,99 @@
+<!DOCTYPE>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>rs starter-kit "hello world" example using ludbud instead of rs.js</title>
+  </head>
+  <body>
+    <h1>
+      <small>remoteStorage</small>
+      <br />
+      hello world sample
+    </h1>
+      <p id="connection-instructions" style="text-align: center;">
+        Please click
+        <button onclick="Ludbud.oauth('remotestorage-no-https', 'me@localhost:8001');">here</button>
+        to (re-)connect to the starter kit remote storage
+        server first using 'me@localhost:8001'.
+      </p>
+    </div>
+
+    <div id="hello-world" style="margin: 2% 10%;">
+      <div>Your name: <input id="text" /></div>
+
+      <div id="current" style="margin-top: 2%; font-size: 1.4em;"></div>
+
+      <div style="margin-top: 2%; padding: 5%; background-color: #ff872e;">
+        Type in your name above. After you connect to your remote storage,
+        your name will be stored in a remote storage file named "note.txt".
+        <br /><br />
+        Each time you change the contents of the textbox,
+        the remote file contents are updated.
+        <br /><br />
+        Every 10 seconds, the remoteStorage client is checking
+        for changes in the remoteStorage file contents and
+        updating this page.
+        <br /><br/>
+        You can check this by opening this page in another browser window
+        and type some other name. The first window will detect the change
+        and update.
+        <br /><br/>
+        You can also check the remoteStorage client logging on the browser
+        Javascript console.
+      </div>
+
+    </div>
+
+  </body>
+  <script src="ludbud.js"></script>
+  <script src="notes-ludbud.js"></script>
+  <script src="./localforage.min.js"></script>
+  <script>
+    function getUserDataCredentials(callback) {
+      var harvest = Ludbud.fromWindowLocation();
+      if (harvest) {
+        console.log('setting harvest into localforage, then reloading page', harvest);
+        localforage.setItem('userDataCredentials', harvest, function(err) {
+          Ludbud.restoreWindowLocation();
+          //now the page will be reloaded, after which harvest will be undefined
+        });
+      } else {
+        localforage.getItem('userDataCredentials', callback);
+      }
+    }
+    function go(err, userDataCredentials) {
+      if (err) {
+        console.log('error getting user data credentials', err);
+      } else if (userDataCredentials) {
+        console.log('now we can use the ludbud object to access the user\'s data');
+        notes.startSync(userDataCredentials);
+      } else {
+        console.log('No user data credentials yet. Please click the button to run:');
+        console.log("Ludbud.oauth('remotestorage', 'me@localhost:8001');");
+      }
+    }
+    function reset() {
+      localforage.clear(function() {
+        window.location = window.location.href;
+      });
+    }
+
+    function $(id) { return document.getElementById(id); }
+
+    function displayNote() {
+      var text = notes.getNote();
+      $('current').innerHTML = text ? 'Hello '+text : '';
+    }
+
+    notes.onChange(displayNote);
+
+    $('text').onkeyup = function() {
+      console.log('calling: notes.setNote(\''+$('text').value+'\');');
+      notes.setNote($('text').value);
+    };
+
+    //... on page load:
+    var ludbud;
+    getUserDataCredentials(go);
+  </script>
+</html>
