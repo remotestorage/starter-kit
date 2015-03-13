@@ -12,7 +12,7 @@
     </h1>
       <p id="connection-instructions" style="text-align: center;">
         Please click
-        <button onclick="Ludbud.oauth('remotestorage-no-https', 'me@localhost:8001');">here</button>
+        <button onclick="Ludbud.oauth('remotestorage-allow-insecure-webfinger', 'me@localhost:8001');">here</button>
         to (re-)connect to the starter kit remote storage
         server first using 'me@localhost:8001'.
       </p>
@@ -58,18 +58,24 @@
           //now the page will be reloaded, after which harvest will be undefined
         });
       } else {
+        window.location = window.location.href;//this cleans up unparseable window locations
         localforage.getItem('userDataCredentials', callback);
       }
+    }
+    function disconnect() {
+      localforage.clear(function() {
+        window.location = window.location.href;
+      });
     }
     function go(err, userDataCredentials) {
       if (err) {
         console.log('error getting user data credentials', err);
       } else if (userDataCredentials) {
-        console.log('now we can use the ludbud object to access the user\'s data');
-        notes.startSync(userDataCredentials);
+        console.log('now we can use the ludbud object to access the user\'s data', userDataCredentials);
+        notes.startSync(userDataCredentials, disconnect);
       } else {
         console.log('No user data credentials yet. Please click the button to run:');
-        console.log("Ludbud.oauth('remotestorage', 'me@localhost:8001');");
+        console.log("Ludbud.oauth('remotestorage-allow-insecure-webfinger', 'me@localhost:8001');");
       }
     }
     function reset() {

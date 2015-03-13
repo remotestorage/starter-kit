@@ -1,15 +1,19 @@
 window.notes = {
   //properties: _ludbud, _note, _etag, _cb
   setNote: function (text) {
-    this._ludbud.update('/notes/note.txt', text, 'text/plain; charset=utf-8', this._etag || undefined, function(err, newETag) {
-      if (err) {
-        console.log('Looks like we might have a conflict, let\'s check');
-        this._sync();
-      } else {
-        console.log('Uploaded note as', text, err, newETag);
-        this._newVersion(newETag, text);
-      }
-    }.bind(this));
+    if (this._ludbud) {
+      this._ludbud.update('/notes/note.txt', text, 'text/plain; charset=utf-8', this._etag || undefined, function(err, newETag) {
+        if (err) {
+          console.log('Looks like we might have a conflict, let\'s check');
+          this._sync();
+        } else {
+          console.log('Uploaded note as', text, err, newETag);
+          this._newVersion(newETag, text);
+        }
+      }.bind(this));
+    } else {
+      console.log('Please connect first');
+    }
   },
   getNote: function () {
     return this._note;
@@ -17,10 +21,11 @@ window.notes = {
   onChange: function (setCb) {
     this._cb = setCb;
   },
-  startSync: function (userDataCredentials) {
+  startSync: function (userDataCredentials, disconnectFunction) {
     this._ludbud = new Ludbud(userDataCredentials);
     this._sync();
-    setInterval(function() {
+    this._disconnect = disconnectFunction;
+    this._syncTimer = setInterval(function() {
       notes._sync();
     }, 10000);
   },
@@ -36,6 +41,8 @@ window.notes = {
       console.log('fetched', err, data);
       if (err === Ludbud.ERR_ACCESS_DENIED) {
         console.log('Please reconnect!');
+        this._disconnect();
+        clearInterval(this._syncTimer);
       } else if (err === Ludbud.ERR_TIMEOUT) {
         console.log('Timeout! Is your remoteStorage server running and reachable?');
       } else if (err === Ludbud.ERR_SERVER_ERROR) {

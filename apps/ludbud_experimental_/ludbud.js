@@ -1,3 +1,4 @@
+"undefined"==typeof XMLHttpRequest&&(XMLHttpRequest=require("xmlhttprequest").XMLHttpRequest),function(a){function b(a){return a.toString=function(){return this.message},a}function c(a){"object"!=typeof a&&(a={}),this.config={tls_only:"undefined"!=typeof a.tls_only?a.tls_only:!0,webfist_fallback:"undefined"!=typeof a.webfist_fallback?a.webfist_fallback:!1,uri_fallback:"undefined"!=typeof a.uri_fallback?a.uri_fallback:!1,request_timeout:"undefined"!=typeof a.request_timeout?a.request_timeout:1e4}}var d={"http://webfist.org/spec/rel":"webfist","http://webfinger.net/rel/avatar":"avatar",remotestorage:"remotestorage",remoteStorage:"remotestorage","http://www.packetizer.com/rel/share":"share","http://webfinger.net/rel/profile-page":"profile",me:"profile",vcard:"vcard",blog:"blog","http://packetizer.com/rel/blog":"blog","http://schemas.google.com/g/2010#updates-from":"updates","https://camlistore.org/rel/server":"camilstore"},e={avatar:[],remotestorage:[],blog:[],vcard:[],updates:[],share:[],profile:[],webfist:[],camlistore:[]},f=["webfinger","host-meta","host-meta.json"];if(c.prototype._fetchJRD=function(a,c){var d=this,e=new XMLHttpRequest;e.onreadystatechange=function(){4===e.readyState&&(200===e.status?d._isValidJSON(e.responseText)?c(null,e.responseText):c(b({message:"invalid json",url:a,status:e.status})):c(404===e.status?b({message:"endpoint unreachable",url:a,status:e.status}):b({message:"error during request",url:a,status:e.status})))},e.open("GET",a,!0),e.setRequestHeader("Accept","application/jrd+json, application/json"),e.send()},c.prototype._isValidJSON=function(a){try{JSON.parse(a)}catch(b){return!1}return!0},c.prototype._isLocalhost=function(a){var b=/^localhost(\.localdomain)?(\:[0-9]+)?$/;return b.test(a)},c.prototype._processJRD=function(c,f){var g=JSON.parse(c);if("object"!=typeof g||"object"!=typeof g.links)return f(b("undefined"!=typeof g.error?{message:g.error}:{message:"unknown response from server"})),!1;var h=g.links,i={object:g,json:c,idx:{}};i.idx.properties={name:a},i.idx.links=JSON.parse(JSON.stringify(e)),h.map(function(a){if(d.hasOwnProperty(a.rel)&&i.idx.links[d[a.rel]]){var b={};Object.keys(a).map(function(c){b[c]=a[c]}),i.idx.links[d[a.rel]].push(b)}});var j=JSON.parse(c).properties;for(var k in j)j.hasOwnProperty(k)&&"http://packetizer.com/ns/name"===k&&(i.idx.properties.name=j[k]);f(null,i)},c.prototype.lookup=function(a,c){function d(){return l+"://"+j+"/.well-known/"+f[k]+"?resource=acct:"+a}function e(a){if(h.config.uri_fallback&&"webfist.org"!==j&&k!==f.length-1)k+=1,g();else if(h.config.tls_only||"https"!==l){if(!h.config.webfist_fallback||"webfist.org"===j)return c(a),!1;k=0,l="http",j="webfist.org",h._fetchJRD(d(),function(a,b){return a?(c(a),!1):void h._processJRD(b,function(a,b){"object"==typeof b.idx.links.webfist&&"string"==typeof b.idx.links.webfist[0].href&&h._fetchJRD(b.idx.links.webfist[0].href,function(a,b){a?c(a):h._processJRD(b,c)})})})}else k=0,l="http",g()}function g(){h._fetchJRD(d(),function(a,b){a?e(a):h._processJRD(b,c)})}if("string"!=typeof a)throw new Error("first parameter must be a user address");if("function"!=typeof c)throw new Error("second parameter must be a callback");var h=this,i=a.replace(/ /g,"").split("@"),j=i[1],k=0,l="https";return 2!==i.length?(c(b({message:"invalid user address "+a+" ( expected format: user@host.com )"})),!1):(h._isLocalhost(j)&&(l="http"),void setTimeout(g,0))},c.prototype.lookupLink=function(a,b,c){e.hasOwnProperty(b)?this.lookup(a,function(a,d){var e=d.idx.links[b];a?c(a):0===e.length?c('no links found with rel="'+b+'"'):c(null,e[0])}):c("unsupported rel "+b)},"object"==typeof window)window.WebFinger=c;else if("function"==typeof define&&define.amd)define([],function(){return c});else try{module.exports=c}catch(g){}}();
 Ludbud = (function() {
   var ret = function(credentials){
     for(var i in credentials) {
@@ -221,7 +222,7 @@ function getClientId(platform) {
   }
 }
 ret.oauth = function(platform, userAddress, scopes) {
-  if (platform !== 'remotestorage') {
+  if (platform !== 'remotestorage' && platform !== 'remotestorage-allow-insecure-webfinger') {
     fail('WARNING: platform ' + platform + ' not fully supported yet');
   }
   var apiBaseURL;
@@ -243,29 +244,21 @@ ret.oauth = function(platform, userAddress, scopes) {
     goTo('https://www.dropbox.com/1/oauth2/authorize');
   } else if (platform === 'googledrive') {
     goTo('https://accounts.google.com/o/oauth2/auth');
-  } else if (platform === 'remotestorage' || platform === 'remotestorage-no-https') {
-    var parts = userAddress.split('@');
-    var prefix = 'https://';
-    if (platform === 'remotestorage-no-https') {
-      prefix = 'http://';
-    }
-    requestJSON(prefix + parts[1] + '/.well-known/webfinger?resource='+encodeURIComponent('acct:'+userAddress),
-        undefined, function(err, data) {
+  } else if (platform === 'remotestorage' || platform === 'remotestorage-allow-insecure-webfinger') {
+
+    var webfinger = new WebFinger({
+      tls_only: (platform === 'remotestorage' ? true : false)
+    });
+    webfinger.lookupLink(userAddress, 'remotestorage', function (err, link) {
       if (err) {
-        fail('error retrieving webfinger for '+userAddress, err);
-      } else if (typeof data === 'object' && Array.isArray(data.links)) {
-        for (var i=0; i< data.links.length; i++) {
-          if (typeof data.links[i] === 'object'
-              && data.links[i].rel === 'remotestorage'
-              && typeof data.links[i].properties === 'object'
-              && typeof data.links[i].properties['http://tools.ietf.org/html/rfc6749#section-4.2'] === 'string') {
-            apiBaseURL = data.links[i].href;
-            goTo(data.links[i].properties['http://tools.ietf.org/html/rfc6749#section-4.2']);
-            return;
-          }
-        }
+        fail('error discovering remoteStorage location for '+userAddress, err);
+      } else if (typeof link.href === 'string'
+              && typeof link.properties === 'object'
+              && typeof link.properties['http://tools.ietf.org/html/rfc6749#section-4.2'] === 'string') {
+        apiBaseURL = link.href;
+        goTo(link.properties['http://tools.ietf.org/html/rfc6749#section-4.2']);
       } else {
-        fail('error parsing webfinger for '+userAddress + JSON.stringify(data));
+        fail('error parsing remoteStorage link for '+userAddress + JSON.stringify(link));
       }
     });
   } else {
